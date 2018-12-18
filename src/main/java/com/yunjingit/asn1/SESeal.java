@@ -5,8 +5,8 @@ import org.bouncycastle.asn1.*;
 /*
 电子印章数据的ASN.1定义为：
     SESeal::=SEQUENCE{
-    esealInfo  SES_SealInfo，-- 印章信息
-    signInfo   SES_SignInfo -- 制章人对印章签名的信息
+    esealInfo  SES_SealInfo
+    signInfo   SES_SignInfo
     }
 
  */

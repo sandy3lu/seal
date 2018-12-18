@@ -3,14 +3,14 @@ package com.yunjingit.asn1;
 import org.bouncycastle.asn1.*;
 
 /*
-印章属性信息的ASN.1定义为：
+ASN.1定义为：
  SES_ESPropertyInfo::=SEQUENCE{
-        Type  INTEGER，--印章类型，如1为单位印章，2为个人印章
-        Name  UTF8String，--印章名称，如个人章、公章、财务章
-        certList  SEQUENCE OF cert，-- 签章人证书列表
-        createDate  UTCTIME，--印章制作日期
-        validStart   UTCTIME，--印章有效起始日期
-        validEnd    UTCTIME--印章有效终止日期
+        Type  INTEGER
+        Name  UTF8String
+        certList  SEQUENCE OF cert
+        createDate  UTCTIME
+        validStart   UTCTIME
+        validEnd    UTCTIME
    }
 
  */

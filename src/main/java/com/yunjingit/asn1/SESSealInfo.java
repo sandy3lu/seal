@@ -4,11 +4,11 @@ import org.bouncycastle.asn1.*;
 
 /*
     SES_SealInfo::=SEQUENCE{
-    header  SES_Header，--头信息
-    esID    IA5String，--电子印章标识，电子印章数据的唯一标识编码
-    property  SES_ESPropertyInfo，  --印章属性信息
-    picture   SES_ESPictrueInfo，--电子印章图片数据
-    extDatas  EXPLICIT ExtensionDatas OPTIONAL --自定义数据
+    header  SES_Header
+    esID    IA5String
+    property  SES_ESPropertyInfo
+    picture   SES_ESPictrueInfo
+    extDatas  EXPLICIT ExtensionDatas OPTIONAL
     }
 
  */

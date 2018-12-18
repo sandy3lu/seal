@@ -4,10 +4,10 @@ import org.bouncycastle.asn1.*;
 
 /*
     SES_ESPictrueInfo::=SEQUENCE{
-    Type IA5String，--图片类型，如GIF、BMP、JPG
-    Data OCTET STRING，--图片数据
-    width INTEGER，--图片显示宽度，单位为毫米(mm)
-    height INTEGER--图片显示高度，单位为毫米(mm)
+    Type IA5String, --图片类型，如GIF、BMP、JPG
+    Data OCTET STRING, --图片数据
+    width INTEGER, --图片显示宽度，单位为毫米(mm)
+    height INTEGER --图片显示高度，单位为毫米(mm)
     }
 
  */

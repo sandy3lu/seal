@@ -4,9 +4,9 @@ import org.bouncycastle.asn1.*;
 
 /*
     SES_SignInfo::=SEQUENCE{
-    cert OCTET STRING．--制章人签名证书
-    signatureAlgorithm OBJECT IDENTIFIER．--签名算法标识
-    signData BIT STRING--制章人的签名值
+    cert OCTET STRING
+    signatureAlgorithm OBJECT IDENTIFIER
+    signData BIT STRING
       }
 
  */

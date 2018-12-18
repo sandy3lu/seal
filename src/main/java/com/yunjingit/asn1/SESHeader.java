@@ -3,9 +3,9 @@ package com.yunjingit.asn1;
 import org.bouncycastle.asn1.*;
 /*
 SES_Header::=SEQUENCE{
-ID   IA5String．--电子印章数据标识, 固定值“ES”
-version  INTEGER--电子印章数据版本号标识，如“11”（后续确认）
-Vid  IA5String--电子印章厂商ID，用于识别不同的软件厂商实现，本系统”yunjingit.com”
+    ID   IA5String
+    version  INTEGER
+    Vid  IA5String
 }
 
  */

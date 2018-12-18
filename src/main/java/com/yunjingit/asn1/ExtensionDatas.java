@@ -11,9 +11,9 @@ import java.util.Vector;
 /*
     ExtensionDatas::=SEQUENCE SIZE (O..MAX) OF ExtData
     ExtData::=SEQUENCE{
-    extnID     OBJECT IDENTIFIER，--自定义扩展字段标识
-    critical     BOOLEAN DEFAULT FALSE，--自定义扩展字段是否关键
-    extnValue   OCTET STRING--自定义扩展字段数据值
+    extnID     OBJECT IDENTIFIER
+    critical     BOOLEAN DEFAULT FALSE
+    extnValue   OCTET STRING
     }
 
  */

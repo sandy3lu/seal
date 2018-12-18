@@ -3,11 +3,9 @@ package com.yunjingit.utils;
 
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.x500.X500Name;
-import org.bouncycastle.asn1.x509.AlgorithmIdentifier;
-import org.bouncycastle.asn1.x509.BasicConstraints;
-import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
+import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.cert.CertIOException;
-import org.bouncycastle.cert.X509CertificateHolder;
+
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
@@ -18,26 +16,29 @@ import org.bouncycastle.jce.spec.ECNamedCurveGenParameterSpec;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.util.encoders.Base64;
+import org.bouncycastle.util.io.pem.PemObject;
+import org.bouncycastle.util.io.pem.PemReader;
+import org.bouncycastle.util.io.pem.PemWriter;
 
 import java.io.*;
 import java.math.BigInteger;
 import java.security.*;
 import java.security.cert.*;
 import java.security.cert.Certificate;
-import java.util.Date;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 public class Certifications {
 
     private static final String BC = org.bouncycastle.jce.provider.BouncyCastleProvider.PROVIDER_NAME;
 
+    private static ArrayList<CRL> crllist = new ArrayList<CRL>();
     static {
         Security.addProvider(new BouncyCastleProvider());
     }
 
     //String issuerString = "CN=root,OU=单位,O=组织";
-    public static X509Certificate generateV3Certificate(String issuerString, String keyfile)
+    public static X509Certificate generateV3Certificate(String issuerString, String keyfile, String certfile)
     {
         KeyPair keyPair= null;
         try {
@@ -63,12 +64,12 @@ public class Certifications {
         X500Name issueDn = new X500Name(issuerString);
         X500Name subjectDn = new X500Name(issuerString);
 
-        // 设置开始日期和结束日期
+
         long year = 360 * 24 * 60 * 60 * 1000;
         Date notBefore = new Date();
         Date notAfter = new Date(notBefore.getTime() + year);
 
-        // 证书序列号
+
         BigInteger serial = BigInteger.probablePrime(32, new Random());
 
         //
@@ -76,7 +77,7 @@ public class Certifications {
         //
         X509Certificate cert=null;
         try {
-            ContentSigner sigGen = new JcaContentSignerBuilder("SHA1withRSA").setProvider(BC).build(privKey); //自签名
+            ContentSigner sigGen = new JcaContentSignerBuilder("SHA1withRSA").setProvider(BC).build(privKey); //self-signed SHA256WithRSAEncryption
             X509v3CertificateBuilder certGen = new JcaX509v3CertificateBuilder(issueDn, serial, notBefore, notAfter, subjectDn, pubKey);
             //extensions
             certGen.addExtension(new ASN1ObjectIdentifier("2.5.29.15"), true, new X509KeyUsage(X509KeyUsage.encipherOnly));
@@ -109,31 +110,47 @@ public class Certifications {
             cert.checkValidity(new Date());
             cert.verify(pubKey);
             cert.verify(cert.getPublicKey());
-        } catch (CertificateExpiredException e) {
-            e.printStackTrace();
-        } catch (CertificateNotYetValidException e) {
-            e.printStackTrace();
-        } catch (CertificateException e) {
-            e.printStackTrace();
-        } catch (NoSuchAlgorithmException e) {
-            e.printStackTrace();
-        } catch (SignatureException e) {
-            e.printStackTrace();
-        } catch (NoSuchProviderException e) {
-            e.printStackTrace();
-        } catch (InvalidKeyException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
-        //私钥保存到指定路径
+        //save to file
         try{
             savePrivkey( keyfile, privKey);
+            saveCertificate( certfile, cert);
         }catch(IOException e){
             e.printStackTrace();
         }
 
 
         return cert;
+
+    }
+
+
+
+    private static void addEntityExtensions(X509v3CertificateBuilder certGen, PublicKey entityKey, PrivateKey caKey, X509Certificate caCert) {
+        JcaX509ExtensionUtils utils = null;
+        try {
+            utils = new JcaX509ExtensionUtils();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+        try {
+            certGen.addExtension(org.bouncycastle.asn1.x509.Extension.authorityKeyIdentifier,
+                    false, utils.createAuthorityKeyIdentifier(caCert));
+
+            certGen.addExtension(org.bouncycastle.asn1.x509.Extension.subjectKeyIdentifier,
+                    false, utils.createSubjectKeyIdentifier(entityKey));
+
+            certGen.addExtension(org.bouncycastle.asn1.x509.Extension.basicConstraints,
+                    true, new BasicConstraints(false));
+            //a key usage extension that makes it suitable for use with SSL/TLS
+            certGen.addExtension(org.bouncycastle.asn1.x509.Extension.keyUsage,
+                    true, new KeyUsage(KeyUsage.digitalSignature | KeyUsage.keyEncipherment));
+        } catch (CertificateEncodingException | CertIOException e) {
+            e.printStackTrace();
+        }
 
     }
 
@@ -164,12 +181,12 @@ public class Certifications {
         X500Name issueDn = new X500Name(issuerString);
         X500Name subjectDn = new X500Name(issuerString);
 
-        // 设置开始日期和结束日期
+
         long year = 360 * 24 * 60 * 60 * 1000;
         Date notBefore = new Date();
         Date notAfter = new Date(notBefore.getTime() + year);
 
-        // 证书序列号
+
         BigInteger serial = BigInteger.probablePrime(32, new Random());
 
         ContentSigner sigGen = null;
@@ -207,18 +224,38 @@ public class Certifications {
     }
 
     private static void savePrivkey(String keyfile, PrivateKey privKey) throws IOException{
+        PemObject key =  new PemObject("PRIVATE KEY", privKey.getEncoded());
+        PemWriter wr = new PemWriter(new FileWriter(keyfile,false));
+        wr.writeObject(key);
+        wr.close();
+    }
 
-        //私钥保存到指定路径
-        FileOutputStream outputStream = null;
-
-         outputStream = new FileOutputStream(keyfile);
-         outputStream.write(privKey.getEncoded());//TODO: 私钥保存的格式
-         outputStream.close();
+    private static void saveCertificate(String certfile, Certificate cert) throws IOException{
+        PemObject key = null;
+        try {
+            key = new PemObject("CERTIFICATE", cert.getEncoded());
+            PemWriter wr = new PemWriter(new FileWriter(certfile,false));
+            wr.writeObject(key);
+            wr.close();
+        } catch (CertificateEncodingException e) {
+            e.printStackTrace();
+        }
 
     }
 
+    //TODO: request Certificate from CA
+    public static X509Certificate certificateRequest(String subjectString, String p10){
 
-    public static boolean certificateVefity(X509Certificate cert){
+
+        return null;
+    }
+
+    //TODO: check ocsp online
+    public static boolean checkOCSP(Certificate cert) {
+
+        return false;
+    }
+    public static boolean certificateVerity(X509Certificate cert){
 
         //verify
         try {
@@ -234,36 +271,82 @@ public class Certifications {
         //TODO: 证书签名验证
 
 
-        //TODO: CRL & OCSP 证书状态验证
+        //CRL
+        if (crllist!=null){
+            for (Iterator it = crllist.iterator(); it.hasNext();) {
+
+                CRL s = (CRL) it.next();
+                boolean result = s.isRevoked(cert);
+                if(result){
+                    return false; // found out that this cert is revoked
+                }
+
+            }
+        }
+
+        //TODO: OCSP (http request ==> server, and get response)
+        //
 
         return true;
     }
 
 
-    public static Certificate readPEMCert(String pemData)
-            throws CertificateException, UnsupportedEncodingException
+    public static Certificate readPEMCert(String certfile)
+            throws Exception
     {
-        CertificateFactory cf = null;
-        try {
-            cf = CertificateFactory.getInstance("X.509", BC);
-        } catch (NoSuchProviderException e) {
-            e.printStackTrace();
-        }
-        return cf.generateCertificate(new ByteArrayInputStream(pemData.getBytes("US-ASCII")));
+        CertificateFactory cf = CertificateFactory.getInstance("X.509", BC);
+        PemObject po = new PemReader(new FileReader(certfile)).readPemObject();
+        Certificate cert = cf.generateCertificate(new ByteArrayInputStream(po.getContent()));
+        return cert;
     }
 
-    public static List<? extends Certificate> readPEMCertPath(String pemData)
-            throws CertificateException, UnsupportedEncodingException
+    //TODO: update CRL daily (by a new thread)
+    public static  Collection<? extends CRL> readBASE64CRL(String crlname)
+            throws Exception
+    {
+
+        CertificateFactory cf = CertificateFactory.getInstance("X.509", BC);
+        byte[] contents = getBytesFromFile(crlname);
+
+        byte[] codes = Base64.decode(contents);
+
+        Collection<? extends CRL> crls = cf.generateCRLs(new ByteArrayInputStream(codes));
+        crllist.addAll(crls);// add to crllist for further search
+        return crls;
+    }
+
+    private static byte[] getBytesFromFile(String filename) throws IOException {
+        FileInputStream fis=new FileInputStream(filename);
+        ByteArrayOutputStream baos=new ByteArrayOutputStream();
+        int thebyte=0;
+        while((thebyte=fis.read())!=-1)
+        {
+            baos.write(thebyte);
+        }
+        fis.close();
+        byte[] contents=baos.toByteArray();
+        baos.close();
+        return contents;
+    }
+
+    public static List<? extends Certificate> readPEMCertPath(String certpathfile)
     {
         CertificateFactory cf = null;
         try {
             cf = CertificateFactory.getInstance("X.509", BC);
-        } catch (NoSuchProviderException e) {
+        } catch (NoSuchProviderException | CertificateException e) {
             e.printStackTrace();
         }
-        CertPath cp= cf.generateCertPath(new ByteArrayInputStream(pemData.getBytes("US-ASCII")));
-        List certs = cp.getCertificates();
-        return certs;
+        try {
+            byte[] contents = getBytesFromFile(certpathfile);
+            CertPath cp= cf.generateCertPath(new ByteArrayInputStream(contents));
+            List certs = cp.getCertificates();
+            return certs;
+        } catch (IOException | CertificateException e) {
+            e.printStackTrace();
+        }
+       return null;
+
     }
 
 }
