@@ -6,6 +6,7 @@ import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.cert.CertIOException;
 
+import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
@@ -250,12 +251,29 @@ public class Certifications {
         return null;
     }
 
-    //TODO: check ocsp online
+
+    /**
+     * Check ocsp boolean.
+     *
+     * @param cert the cert to check
+     * @return the boolean, if cert is not valid, return true.
+     */
     public static boolean checkOCSP(Certificate cert) {
+        //TODO: check ocsp online
+        //TODO: OCSP (http request ==> server, and get response)
+
 
         return false;
     }
-    public static boolean certificateVerity(X509Certificate cert){
+
+
+    /**
+     * Certificate verity boolean.
+     *
+     * @param cert the cert to check
+     * @return the boolean, if cert is varified
+     */
+    public static boolean certificateVerify(X509Certificate cert){
 
         //verify
         try {
@@ -269,27 +287,108 @@ public class Certifications {
         }
 
         //TODO: 证书签名验证
+        try {
 
-
-        //CRL
-        if (crllist!=null){
-            for (Iterator it = crllist.iterator(); it.hasNext();) {
-
-                CRL s = (CRL) it.next();
-                boolean result = s.isRevoked(cert);
-                if(result){
-                    return false; // found out that this cert is revoked
+                CertificateFactory fact = CertificateFactory.getInstance("X.509", "BC");
+                List<? extends Certificate>  certChain = getCertChain(cert);
+               if (certChain==null) {
+                   return false;
                 }
+               if (certChain.size() > 1) {    // not self-signed
+                   CollectionCertStoreParameters params = new CollectionCertStoreParameters(certChain);
 
-            }
+                   Certificate rootCert = certChain.get(certChain.size() - 1);
+                   certChain.remove(rootCert);
+                   CertPath certPath = fact.generateCertPath(certChain); //the path does not include the trust anchor
+                    //CertPathValidator implementation uses the CertStore to look up any CRLs or certificates it might need
+                   CertStore store = CertStore.getInstance("Collection", params, "BC");
+                   //Set of TrustAnchor objects containing the selfsigned root certificate that validates the intermediate certificate in the path
+                   Set trust = Collections.singleton(new TrustAnchor((X509Certificate) rootCert, null));
+
+                   // perform validation：
+                   CertPathValidator validator = CertPathValidator.getInstance("PKIX", "BC");
+                   PKIXParameters param = new PKIXParameters(trust);
+                   param.addCertStore(store);
+                   param.setDate(new Date());
+                   CertPathValidatorResult result = validator.validate(certPath, param);
+
+               }
+        }catch(Exception e){
+                e.printStackTrace();
+                return false;
         }
 
-        //TODO: OCSP (http request ==> server, and get response)
-        //
+
+
+        if (checkCRL(cert)){
+            return false;
+        }
+
+        if (checkOCSP(cert)){
+            return false;
+        }
 
         return true;
     }
 
+
+    private static List<Certificate> getCertChain(Certificate cert){
+
+        List list = new ArrayList();
+
+        Certificate c = cert;
+        while(true) {
+
+            Certificate issuerCert = getIssuerCert(c);
+            if (issuerCert == null) {
+                return null; // something wrong
+            }
+            list.add(c);
+            if (issuerCert == cert) {
+                // self signed
+                return list;
+            } else {
+
+                list.add(issuerCert);
+                c = issuerCert;
+            }
+        }
+
+    }
+
+    private static Certificate getIssuerCert(Certificate cert){
+
+        X509CertificateHolder ch = null;
+        try {
+            ch = new X509CertificateHolder(cert.getEncoded());
+        } catch (IOException e) {
+            e.printStackTrace();
+            return  null;
+        } catch (CertificateEncodingException e) {
+            e.printStackTrace();
+            return  null;
+        }
+        if(ch.getSubject().equals(ch.getIssuer())){
+            // self signed certificate
+            return cert;
+        }
+
+        X500Name issuer = ch.getIssuer();
+        Certificate c= getCertificatebyX500Name(issuer);
+        if(c==null){
+            // TODO: can not find the issuer's certificate
+            return null;
+        }else {
+            return c;
+        }
+    }
+
+    private static Certificate getCertificatebyX500Name(X500Name subject){
+
+        // certificate store
+
+        return null;
+    }
 
     public static Certificate readPEMCert(String certfile)
             throws Exception
@@ -346,6 +445,33 @@ public class Certifications {
             e.printStackTrace();
         }
        return null;
+
+    }
+
+    /**
+     * Check crl boolean.
+     *
+     * @param cert the cert to check
+     * @return the boolean, if cert is revoked, return true
+     */
+    public static boolean checkCRL(Certificate cert){
+
+        //TODO: get CRL online
+
+        //CRL
+        if (crllist!=null){
+            for (Iterator it = crllist.iterator(); it.hasNext();) {
+
+                CRL s = (CRL) it.next();
+                boolean result = s.isRevoked(cert);
+                if(result){
+                    return true; // found out that this cert is revoked
+                }
+
+            }
+        }
+
+        return false;
 
     }
 

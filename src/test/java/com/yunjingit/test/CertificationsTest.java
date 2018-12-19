@@ -55,11 +55,11 @@ public void testGenerateV3CertificateSM2() throws Exception {
 
 /** 
 * 
-* Method: certificateVefity(X509Certificate cert) 
+* Method: certificateVerify(X509Certificate cert)
 * 
 */ 
 @Test
-public void testCertificateVerity() throws Exception {
+public void testcertificateVerify() throws Exception {
 //TODO: Test goes here... 
 } 
 
