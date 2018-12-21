@@ -19,8 +19,7 @@ public class SESeal extends ASN1Object {
         this.signInfo = signInfo;
     }
 
-    private SESeal(
-            ASN1Sequence seq)
+    private SESeal( ASN1Sequence seq)
     {
         esealInfo = SESSealInfo.getInstance(seq.getObjectAt(0));
         signInfo = SESSignInfo.getInstance(seq.getObjectAt(1));

@@ -32,7 +32,7 @@ import java.util.*;
 public class Certifications {
 
     private static final String BC = org.bouncycastle.jce.provider.BouncyCastleProvider.PROVIDER_NAME;
-
+    private static ArrayList<Certificate> certlist = new ArrayList<Certificate>();
     private static ArrayList<CRL> crllist = new ArrayList<CRL>();
     static {
         Security.addProvider(new BouncyCastleProvider());
@@ -277,16 +277,13 @@ public class Certifications {
 
         //verify
         try {
-            cert.checkValidity(new Date());
-        } catch (CertificateExpiredException e) {
+            cert.checkValidity(new Date()); // 有效期验证
+        } catch (CertificateExpiredException | CertificateNotYetValidException e) {
             e.printStackTrace(); //TODO: 用log记录
-            return false;
-        } catch (CertificateNotYetValidException e) {
-            e.printStackTrace();
             return false;
         }
 
-        //TODO: 证书签名验证
+        //TODO: 证书签名验证; 证书信任链验证、密钥用法验证
         try {
 
                 CertificateFactory fact = CertificateFactory.getInstance("X.509", "BC");
@@ -302,16 +299,23 @@ public class Certifications {
                    CertPath certPath = fact.generateCertPath(certChain); //the path does not include the trust anchor
                     //CertPathValidator implementation uses the CertStore to look up any CRLs or certificates it might need
                    CertStore store = CertStore.getInstance("Collection", params, "BC");
-                   //Set of TrustAnchor objects containing the selfsigned root certificate that validates the intermediate certificate in the path
+                   //Set of TrustAnchor objects containing the self-signed root certificate that validates the intermediate certificate in the path
                    Set trust = Collections.singleton(new TrustAnchor((X509Certificate) rootCert, null));
 
                    // perform validation：
                    CertPathValidator validator = CertPathValidator.getInstance("PKIX", "BC");
+
                    PKIXParameters param = new PKIXParameters(trust);
+                   //param.addCertPathChecker(); // PathChecker: revocation checking
                    param.addCertStore(store);
                    param.setDate(new Date());
-                   CertPathValidatorResult result = validator.validate(certPath, param);
-
+                   param.setRevocationEnabled(false);//tell the CertPathValidator implementation not to expect to use CRLs, as some other revocation mechanism has been enabled
+                   try {
+                       CertPathValidatorResult result = validator.validate(certPath, param);
+                   }catch(Exception ee){
+                       ee.printStackTrace();
+                       return false;
+                   }
                }
         }catch(Exception e){
                 e.printStackTrace();
@@ -331,6 +335,40 @@ public class Certifications {
         return true;
     }
 
+    private static CertPath buildCertPath(X509Certificate endCert, X509Certificate rootCert){
+
+        X509CertSelector endConstraints = new X509CertSelector();
+
+        endConstraints.setSerialNumber(endCert.getSerialNumber());
+        try {
+            endConstraints.setIssuer(endCert.getIssuerX500Principal().getEncoded());
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+        CollectionCertStoreParameters params = new CollectionCertStoreParameters( certlist);
+        try {
+            CertStore store = CertStore.getInstance( "Collection", params, BC);
+
+            CertPathBuilder builder = CertPathBuilder.getInstance("PKIX", BC);
+
+            PKIXBuilderParameters buildParams = new PKIXBuilderParameters( Collections.singleton(new TrustAnchor(rootCert, null)), endConstraints);
+
+            buildParams.addCertStore(store);
+            buildParams.setDate(new Date());
+
+            PKIXCertPathBuilderResult result = (PKIXCertPathBuilderResult)builder.build(buildParams);
+            CertPath                  path = result.getCertPath();
+            return path;
+        } catch (InvalidAlgorithmParameterException | CertPathBuilderException e) {
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException | NoSuchProviderException e) {
+            e.printStackTrace();
+        }
+
+        return null;
+    }
 
     private static List<Certificate> getCertChain(Certificate cert){
 
@@ -396,6 +434,7 @@ public class Certifications {
         CertificateFactory cf = CertificateFactory.getInstance("X.509", BC);
         PemObject po = new PemReader(new FileReader(certfile)).readPemObject();
         Certificate cert = cf.generateCertificate(new ByteArrayInputStream(po.getContent()));
+        certlist.add(cert);// save to list
         return cert;
     }
 
@@ -438,8 +477,15 @@ public class Certifications {
         }
         try {
             byte[] contents = getBytesFromFile(certpathfile);
-            CertPath cp= cf.generateCertPath(new ByteArrayInputStream(contents));
-            List certs = cp.getCertificates();
+            CertPath path= cf.generateCertPath(new ByteArrayInputStream(contents));
+            List certs = path.getCertificates();
+            Iterator it = path.getCertificates().iterator();
+            while (it.hasNext())
+            {
+                certlist.add((X509Certificate)it.next());// save to list
+            }
+
+
             return certs;
         } catch (IOException | CertificateException e) {
             e.printStackTrace();
