@@ -26,8 +26,9 @@ public class Seals {
 
     static BigInteger VERSION =  BigInteger.valueOf(11);
     static ASN1ObjectIdentifier SM2signatureAlgorithm = new ASN1ObjectIdentifier("1.2.156.10197.1.501");
+    static DERIA5String VID = new DERIA5String("yunjingit.com");
 
-    public static SESSignature sealSign(byte[] contents, SESeal stamp, Certificate signercert, String propertyInfo , ECPrivateKeyParameters ecPriv){
+    public static SESSignature esSignatureSign(byte[] contents, SESeal stamp, Certificate signercert, String propertyInfo , ECPrivateKeyParameters ecPriv){
 
         //a
         boolean result = Certifications.certificateVerify((X509Certificate) signercert);
@@ -36,7 +37,7 @@ public class Seals {
             return null;
         }
         try {
-            if(!stampVerify(stamp.getEncoded())){
+            if(!esealVerify(stamp.getEncoded(),null)){
                 //TODO:log  stamp is not valid
                 return null;
             }
@@ -52,7 +53,7 @@ public class Seals {
             byte[] certData = signercert.getEncoded();
             for (int i=0; i< certlist.size();i++){
                 ASN1Encodable c = certlist.getObjectAt(i);
-                int result_i = Arrays.compareUnsigned(certData, c);
+                int result_i = Arrays.compareUnsigned(certData, c.toASN1Primitive().getEncoded());
                 if (result_i == 0){
                     // found equal
                     found = true;
@@ -62,7 +63,7 @@ public class Seals {
                 //TODO: log cert is not in the list
                 return  null;
             }
-        } catch (CertificateEncodingException e) {
+        } catch (CertificateEncodingException | IOException e) {
             e.printStackTrace(); // cert wrong
             return null;
         }
@@ -125,10 +126,11 @@ public class Seals {
     }
 
     protected static byte[] processContents(byte[] input, String propertyInfo){
+
         return input;
     }
 
-    public static boolean sealVerity(byte[] sealsignature){
+    public static boolean esSignatureVerity(byte[] contents, byte[] sealsignature){
 
         ASN1StreamParser aIn = new ASN1StreamParser(sealsignature);
 
@@ -165,23 +167,46 @@ public class Seals {
                 return false;
             }
 
-             result = Certifications.certificateVerify((X509Certificate) signercert);
+            ASN1BitString timeInfo = essignature.getToSign().getTimeInfo();
+           String timestr = timeInfo.getString();
+            ASN1UTCTime time = new ASN1UTCTime(timestr);
+             result = Certifications.certificateVerify((X509Certificate) signercert, time.getDate(),false);
             if(!result){
                 return false; // cert not vaild
             }
-        } catch (IOException | CertificateException | NoSuchProviderException e) {
+
+            // verify hash
+            DERIA5String proper = essignature.getToSign().getPropertyInfo();
+            String propertyInfo = proper.getString();
+            byte[] data = processContents(contents, propertyInfo);
+            SM3Digest digest = new SM3Digest();
+            digest.reset();
+            digest.update(data, 0, data.length);
+            byte[] resBuf = new byte[digest.getDigestSize()];
+            digest.doFinal(resBuf, 0);
+            ASN1BitString datahash = essignature.getToSign().getDataHash();
+            byte[] dataHash  = datahash.getEncoded();
+            int result_i = Arrays.compareUnsigned(dataHash, resBuf);
+            if (result_i != 0){
+                return false; // hash failed
+            }
+
+            //verify stamp
+            byte[] stampdata = essignature.getToSign().getEseal().getEncoded();
+            result = esealVerify(stampdata, time.getDate());
+            if(!result){
+                // verify stamp failed
+                return false;
+            }
+        } catch (IOException | CertificateException | NoSuchProviderException | ParseException e) {
             e.printStackTrace();
             return false;
         }
 
-
-
-
-
-
+        return true;
     }
 
-    public static boolean stampVerify(byte[]  stampdata){
+    public static boolean esealVerify(byte[]  stampdata, Date refDate){
 
         ASN1StreamParser aIn = new ASN1StreamParser(stampdata);
 
@@ -190,7 +215,7 @@ public class Seals {
             seq = (ASN1SequenceParser)aIn.readObject();
             SESeal stamp =  SESeal.getInstance(seq); //电子印章格式符合
 
-            //TODO: signature vaild
+
             SESSealInfo esealInfo = stamp.getEsealInfo();
             ASN1OctetString cert = stamp.getSignInfo().getCert();
             ASN1ObjectIdentifier algo = stamp.getSignInfo().getSignatureAlgorithm();
@@ -229,7 +254,11 @@ public class Seals {
 
                 ASN1UTCTime end = stamp.getEsealInfo().getProperty().getValidEnd();
                 ASN1UTCTime start = stamp.getEsealInfo().getProperty().getValidStart();
+
                 Date date = new Date();
+                if(refDate!=null){
+                    date = refDate;
+                }
                 if(!date.before(start.getDate()) && !date.after(end.getDate())){
                     return true;
                 }else {
@@ -276,12 +305,50 @@ public class Seals {
         return param;
     }
 
-    public static SESeal esealGenerate(String esID, int type, String name, Certificate[] certlist, Date start, Date end, SESESPictrueInfo pic,
-                                       Certificate makercert, ECPrivateKeyParameters ecPriv){
+    public static SESeal esealGenerate(String esID, int type, String name, org.bouncycastle.asn1.x509.Certificate[] certlist, Date start, Date end, SESESPictrueInfo pic,
+                                       org.bouncycastle.asn1.x509.Certificate makercert, ECPrivateKeyParameters ecPriv){
 
+        ASN1Integer version = new ASN1Integer(VERSION);
+        SESHeader header = new SESHeader(version,VID);
 
+        DERIA5String esID_ia5 = new DERIA5String(esID);
 
-        return null;
+        ASN1Integer type_asn1 = new ASN1Integer(type);
+        DERUTF8String name_asn1 = new DERUTF8String(name);
+
+        ASN1EncodableVector vec = new ASN1EncodableVector();
+        for(org.bouncycastle.asn1.x509.Certificate c: certlist){
+            vec.add(c);
+        }
+        DERSequence cert_seq = new DERSequence(vec);
+
+        DERUTCTime start_asn1 = new DERUTCTime(start);
+        DERUTCTime end_asn1 = new DERUTCTime(end);
+        DERUTCTime create_asn1 = new DERUTCTime(new Date());
+        SESESPropertyInfo propertyInfo = new SESESPropertyInfo(type_asn1,name_asn1,cert_seq,create_asn1,start_asn1,end_asn1);
+
+        SESSealInfo esealInfo = new SESSealInfo(header,esID_ia5,propertyInfo,pic, null);
+        try {
+            DEROctetString cert = new DEROctetString(makercert.getEncoded());
+            ASN1EncodableVector v = new ASN1EncodableVector();
+            v.add(esealInfo);
+            v.add(cert);
+            v.add(SM2signatureAlgorithm);
+            DERSequence se =  new DERSequence(v);
+            byte[] msg = se.getEncoded();
+            SM2Signer signer = new SM2Signer();
+            signer.init(true,ecPriv);
+            signer.update(msg, 0, msg.length);
+            byte[] sign = signer.generateSignature();
+            DERBitString signData = new DERBitString(sign);
+            SESSignInfo signInfo = new SESSignInfo(cert,SM2signatureAlgorithm, signData);
+
+            return new SESeal(esealInfo,signInfo);
+        } catch (IOException | CryptoException e) {
+            e.printStackTrace();
+            return null;
+        }
+
     }
 
 

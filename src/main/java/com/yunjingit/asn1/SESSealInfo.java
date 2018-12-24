@@ -25,8 +25,9 @@ public class SESSealInfo extends ASN1Object {
         this.esID = esID;
         this.property = property;
         this.picture = picture;
-        this.extDatas = extDatas;
-
+        if(extDatas!=null) {
+            this.extDatas = extDatas;
+        }
     }
 
     public SESSealInfo(ASN1Sequence seq){

@@ -2,6 +2,7 @@ package com.yunjingit.utils;
 
 
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.sec.ECPrivateKey;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.cert.CertIOException;
@@ -11,6 +12,12 @@ import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
+import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
+import org.bouncycastle.crypto.params.RSAPrivateCrtKeyParameters;
+import org.bouncycastle.crypto.util.PrivateKeyFactory;
+import org.bouncycastle.jcajce.provider.asymmetric.rsa.BCRSAPrivateCrtKey;
+import org.bouncycastle.jcajce.provider.asymmetric.rsa.BCRSAPrivateKey;
 import org.bouncycastle.jce.X509KeyUsage;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jce.spec.ECNamedCurveGenParameterSpec;
@@ -21,12 +28,14 @@ import org.bouncycastle.util.encoders.Base64;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
 import org.bouncycastle.util.io.pem.PemWriter;
+import sun.security.rsa.RSAPrivateKeyImpl;
 
 import java.io.*;
 import java.math.BigInteger;
 import java.security.*;
 import java.security.cert.*;
 import java.security.cert.Certificate;
+import java.security.interfaces.RSAPrivateKey;
 import java.util.*;
 
 public class Certifications {
@@ -155,7 +164,7 @@ public class Certifications {
 
     }
 
-    public static X509Certificate generateV3CertificateSM2(String issuerString, String keyfile){
+    public static X509Certificate generateV3CertificateSM2(String subjectString, String keyfile, X509Certificate rootcert, PrivateKey rootkey){
         //
         // set up the keys
         //
@@ -179,9 +188,9 @@ public class Certifications {
             return null;
         }
 
-        X500Name issueDn = new X500Name(issuerString);
-        X500Name subjectDn = new X500Name(issuerString);
 
+        X500Name subjectDn = new X500Name(subjectString);
+        X500Name issueDn = subjectDn;
 
         long year = 360 * 24 * 60 * 60 * 1000;
         Date notBefore = new Date();
@@ -192,7 +201,14 @@ public class Certifications {
 
         ContentSigner sigGen = null;
         try {
-            sigGen = new JcaContentSignerBuilder("SM3withSM2").setProvider(BC).build(privKey);
+            if(rootcert == null) {
+                sigGen = new JcaContentSignerBuilder("SM3withSM2").setProvider(BC).build(privKey);
+
+            }else{
+                sigGen = new JcaContentSignerBuilder("SM3withSM2").setProvider(BC).build(rootkey);
+                String issuer = rootcert.getIssuerDN().getName();
+                issueDn = new X500Name(issuer);
+            }
         } catch (OperatorCreationException e) {
             e.printStackTrace();
             return null;
@@ -231,6 +247,16 @@ public class Certifications {
         wr.close();
     }
 
+    private static AsymmetricKeyParameter  readPrivkey(String keyfile) throws IOException{
+
+        PemReader rd = new PemReader(new FileReader(keyfile));
+        PemObject key = rd.readPemObject();
+        AsymmetricKeyParameter priv = PrivateKeyFactory.createKey(key.getContent());
+
+
+        return priv;
+    }
+
     private static void saveCertificate(String certfile, Certificate cert) throws IOException{
         PemObject key = null;
         try {
@@ -267,17 +293,27 @@ public class Certifications {
     }
 
 
+    public static boolean certificateVerify(X509Certificate cert){
+        return certificateVerify( cert, new Date(), true);
+    }
+
     /**
      * Certificate verity boolean.
      *
      * @param cert the cert to check
      * @return the boolean, if cert is varified
      */
-    public static boolean certificateVerify(X509Certificate cert){
+    public static boolean certificateVerify(X509Certificate cert, Date refDate, boolean checkOCSP){
+
 
         //verify
         try {
-            cert.checkValidity(new Date()); // 有效期验证
+            if(refDate == null){
+                cert.checkValidity(new Date()); // 有效期验证
+            }else{
+                cert.checkValidity(refDate); // 有效期验证
+            }
+
         } catch (CertificateExpiredException | CertificateNotYetValidException e) {
             e.printStackTrace(); //TODO: 用log记录
             return false;
@@ -324,14 +360,15 @@ public class Certifications {
 
 
 
-        if (checkCRL(cert)){
+        if (checkCRL(cert, refDate)){
             return false;
         }
 
-        if (checkOCSP(cert)){
-            return false;
+        if(checkOCSP) {
+            if (checkOCSP(cert)) {
+                return false;
+            }
         }
-
         return true;
     }
 
@@ -500,7 +537,7 @@ public class Certifications {
      * @param cert the cert to check
      * @return the boolean, if cert is revoked, return true
      */
-    public static boolean checkCRL(Certificate cert){
+    public static boolean checkCRL(Certificate cert, Date refDate){
 
         //TODO: get CRL online
 

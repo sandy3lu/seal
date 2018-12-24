@@ -16,6 +16,7 @@ public class SESHeader extends ASN1Object {
     private DERIA5String vid;
 
     public SESHeader(ASN1Integer version, DERIA5String vid){
+
         this.version = version;
         this.vid = vid;
     }
