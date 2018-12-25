@@ -1,7 +1,11 @@
 package com.yunjingit.utils;
 
 
+import org.bouncycastle.asn1.ASN1InputStream;
 import org.bouncycastle.asn1.ASN1ObjectIdentifier;
+import org.bouncycastle.asn1.ASN1Primitive;
+import org.bouncycastle.asn1.ASN1Sequence;
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
 import org.bouncycastle.asn1.sec.ECPrivateKey;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.*;
@@ -28,14 +32,14 @@ import org.bouncycastle.util.encoders.Base64;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
 import org.bouncycastle.util.io.pem.PemWriter;
-import sun.security.rsa.RSAPrivateKeyImpl;
+
 
 import java.io.*;
 import java.math.BigInteger;
 import java.security.*;
 import java.security.cert.*;
 import java.security.cert.Certificate;
-import java.security.interfaces.RSAPrivateKey;
+
 import java.util.*;
 
 public class Certifications {
@@ -74,11 +78,11 @@ public class Certifications {
         X500Name issueDn = new X500Name(issuerString);
         X500Name subjectDn = new X500Name(issuerString);
 
-
-        long year = 360 * 24 * 60 * 60 * 1000;
         Date notBefore = new Date();
-        Date notAfter = new Date(notBefore.getTime() + year);
-
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(notBefore);
+        cal.add(Calendar.YEAR, 1);
+        Date notAfter = cal.getTime();
 
         BigInteger serial = BigInteger.probablePrime(32, new Random());
 
@@ -108,11 +112,7 @@ public class Certifications {
                     new BasicConstraints(0));
 
             cert = new JcaX509CertificateConverter().setProvider(BC).getCertificate(certGen.build(sigGen));
-        } catch (OperatorCreationException | CertificateException e) {
-            e.printStackTrace();
-        } catch (CertIOException e) {
-            e.printStackTrace();
-        } catch (NoSuchAlgorithmException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
@@ -192,10 +192,11 @@ public class Certifications {
         X500Name subjectDn = new X500Name(subjectString);
         X500Name issueDn = subjectDn;
 
-        long year = 360 * 24 * 60 * 60 * 1000;
         Date notBefore = new Date();
-        Date notAfter = new Date(notBefore.getTime() + year);
-
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(notBefore);
+        cal.add(Calendar.YEAR, 1);
+        Date notAfter = cal.getTime();
 
         BigInteger serial = BigInteger.probablePrime(32, new Random());
 
@@ -221,17 +222,52 @@ public class Certifications {
                 subjectDn,
                 pubKey);
 
+        // extensions
+        JcaX509ExtensionUtils utils = null;
+        try {
+            utils = new JcaX509ExtensionUtils();
+            if(rootcert == null){
+                certGen.addExtension(org.bouncycastle.asn1.x509.Extension.basicConstraints,
+                        true, new BasicConstraints(true)); // is CA
+                certGen.addExtension(org.bouncycastle.asn1.x509.Extension.subjectKeyIdentifier,
+                        false, utils.createSubjectKeyIdentifier(pubKey));
+                certGen.addExtension(org.bouncycastle.asn1.x509.Extension.keyUsage,
+                        true, new KeyUsage(KeyUsage.digitalSignature ));
+
+            }else{
+                certGen.addExtension(org.bouncycastle.asn1.x509.Extension.basicConstraints,
+                        true, new BasicConstraints(false));
+                certGen.addExtension(org.bouncycastle.asn1.x509.Extension.authorityKeyIdentifier,
+                        false, utils.createAuthorityKeyIdentifier(rootcert));
+
+                certGen.addExtension(org.bouncycastle.asn1.x509.Extension.subjectKeyIdentifier,
+                        false, utils.createSubjectKeyIdentifier(pubKey));
+                certGen.addExtension(org.bouncycastle.asn1.x509.Extension.keyUsage,
+                        true, new KeyUsage(KeyUsage.digitalSignature ));
+            }
+        } catch (NoSuchAlgorithmException | CertIOException | CertificateEncodingException e) {
+            e.printStackTrace();
+        }
+
         X509Certificate cert = null;
         try {
             cert = new JcaX509CertificateConverter().setProvider(BC).getCertificate(certGen.build(sigGen));
             cert.checkValidity(new Date());
-            cert.verify(pubKey);
+            if(rootcert == null){
+                cert.verify(pubKey);
+            }else{
+                PublicKey publickey = rootcert.getPublicKey();
+                cert.verify(publickey);
+            }
+
         } catch (CertificateException | NoSuchAlgorithmException | InvalidKeyException | NoSuchProviderException | SignatureException e) {
             e.printStackTrace();
 
         }
         try{
             savePrivkey( keyfile, privKey);
+            String certfile = keyfile.replace("pem","cer");
+            saveCertificate( certfile, cert);
         }catch(IOException e){
             e.printStackTrace();
         }
@@ -247,14 +283,26 @@ public class Certifications {
         wr.close();
     }
 
-    private static AsymmetricKeyParameter  readPrivkey(String keyfile) throws IOException{
+    public static PrivateKey  readPrivkey(String keyfile) throws IOException{
 
         PemReader rd = new PemReader(new FileReader(keyfile));
-        PemObject key = rd.readPemObject();
-        AsymmetricKeyParameter priv = PrivateKeyFactory.createKey(key.getContent());
+        PemObject keyobj = rd.readPemObject();
+        PrivateKeyInfo privateKeyInfo = PrivateKeyInfo.getInstance(ASN1Primitive.fromByteArray(keyobj.getContent()));
 
+        PrivateKey     key = BouncyCastleProvider.getPrivateKey(privateKeyInfo);
 
-        return priv;
+        return key;
+    }
+
+    public static AsymmetricKeyParameter  readPrivkeyToBC(String keyfile) throws IOException{
+
+        PemReader rd = new PemReader(new FileReader(keyfile));
+        PemObject keyobj = rd.readPemObject();
+        PrivateKeyInfo privateKeyInfo = PrivateKeyInfo.getInstance(ASN1Primitive.fromByteArray(keyobj.getContent()));
+        AsymmetricKeyParameter key = PrivateKeyFactory.createKey(privateKeyInfo);
+       // PrivateKey     key = BouncyCastleProvider.getPrivateKey(privateKeyInfo);
+
+        return key;
     }
 
     private static void saveCertificate(String certfile, Certificate cert) throws IOException{
@@ -309,9 +357,9 @@ public class Certifications {
         //verify
         try {
             if(refDate == null){
-                cert.checkValidity(new Date()); // 有效期验证
+                cert.checkValidity(new Date()); //
             }else{
-                cert.checkValidity(refDate); // 有效期验证
+                cert.checkValidity(refDate); // valid date
             }
 
         } catch (CertificateExpiredException | CertificateNotYetValidException e) {
@@ -319,7 +367,7 @@ public class Certifications {
             return false;
         }
 
-        //TODO: 证书签名验证; 证书信任链验证、密钥用法验证
+        //TODO: signature; cert chain;  key usage
         try {
 
                 CertificateFactory fact = CertificateFactory.getInstance("X.509", "BC");
@@ -338,7 +386,7 @@ public class Certifications {
                    //Set of TrustAnchor objects containing the self-signed root certificate that validates the intermediate certificate in the path
                    Set trust = Collections.singleton(new TrustAnchor((X509Certificate) rootCert, null));
 
-                   // perform validation：
+                   // perform validation
                    CertPathValidator validator = CertPathValidator.getInstance("PKIX", "BC");
 
                    PKIXParameters param = new PKIXParameters(trust);
@@ -473,6 +521,20 @@ public class Certifications {
         Certificate cert = cf.generateCertificate(new ByteArrayInputStream(po.getContent()));
         certlist.add(cert);// save to list
         return cert;
+    }
+
+    public static org.bouncycastle.asn1.x509.Certificate convertFromCert(X509Certificate cert){
+        try {
+            byte[] data = cert.getEncoded();
+            ASN1InputStream aIn = new ASN1InputStream(new ByteArrayInputStream(data));
+            ASN1Sequence seq = ASN1Sequence.getInstance(aIn.readObject());
+            org.bouncycastle.asn1.x509.Certificate c = org.bouncycastle.asn1.x509.Certificate.getInstance(seq);
+            return c;
+        } catch (CertificateEncodingException | IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+
     }
 
     //TODO: update CRL daily (by a new thread)
