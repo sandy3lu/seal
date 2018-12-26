@@ -35,9 +35,19 @@ public class Seals {
     static DERIA5String VID = new DERIA5String("yunjingit.com");
     static SM2Signer SM2SINGER = new SM2Signer();
 
+    /**
+     * Es signature sign ses signature.
+     *
+     * @param contents     the contents
+     * @param stamp        the stamp
+     * @param signercert   the signercert
+     * @param propertyInfo the property info
+     * @param ecPriv       the ec priv
+     * @return the ses signature
+     */
     public static SESSignature esSignatureSign(byte[] contents, SESeal stamp, Certificate signercert, String propertyInfo , ECPrivateKeyParameters ecPriv){
 
-        //a
+        // step a
         boolean result = Certifications.certificateVerify((X509Certificate) signercert);
         if(!result){
             // cert is not valid
@@ -249,11 +259,13 @@ public class Seals {
             v.add(algo);
             DERSequence se =  new DERSequence(v);
             msg = se.getEncoded();
-            signature = stamp.getSignInfo().getSignData().getEncoded();
+            DERBitString bs = (DERBitString) stamp.getSignInfo().getSignData();
+            signature = bs.getOctets();
             CertificateFactory cf = null;
             try {
                 cf = CertificateFactory.getInstance("X.509", "BC");
-                signercert = cf.generateCertificate(new ByteArrayInputStream(cert.getEncoded()));
+                byte[] certdata = cert.getOctets();
+                signercert = cf.generateCertificate(new ByteArrayInputStream(certdata));
                 param = getEcPublicKeyParameters(signercert);
                 if(param == null){
                     // something wrong with extract PUBLIC key
@@ -301,6 +313,7 @@ public class Seals {
         //step c
         boolean result = Certifications.certificateVerify((X509Certificate) signercert);
         if(!result){
+
             // cert verified fail
             return 4;
         }
@@ -422,7 +435,6 @@ public static boolean exportSESeal(SESeal seSeal, String filename){
         return  false;
     }
 
-
 }
 
 public static SESeal importSESeal(String filename){
@@ -440,5 +452,36 @@ public static SESeal importSESeal(String filename){
 
 }
 
+
+    public static boolean exportSESSignature(SESSignature signature, String filename){
+
+        try {
+            byte[] data = signature.getEncoded();
+            PemObject key =  new PemObject("SESSIGNATURE", data);
+            PemWriter wr = new PemWriter(new FileWriter(filename,false));
+            wr.writeObject(key);
+            wr.close();
+            return true;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return  false;
+        }
+
+    }
+
+    public static SESSignature importSESSignature(String filename){
+
+        try {
+            PemReader rd = new PemReader(new FileReader(filename));
+            PemObject keyobj = null;
+            keyobj = rd.readPemObject();
+            SESSignature seal = SESSignature.getInstance(ASN1Primitive.fromByteArray(keyobj.getContent()));
+            return seal;
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+    }
 
 }

@@ -6,22 +6,23 @@ import org.bouncycastle.asn1.ASN1ObjectIdentifier;
 import org.bouncycastle.asn1.ASN1Primitive;
 import org.bouncycastle.asn1.ASN1Sequence;
 import org.bouncycastle.asn1.pkcs.PrivateKeyInfo;
-import org.bouncycastle.asn1.sec.ECPrivateKey;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.cert.CertIOException;
-
 import org.bouncycastle.cert.X509CertificateHolder;
+import org.bouncycastle.cert.X509ContentVerifierProviderBuilder;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509ContentVerifierProviderBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.bouncycastle.cert.path.CertPathValidation;
+import org.bouncycastle.cert.path.CertPathValidationResult;
+import org.bouncycastle.cert.path.validations.BasicConstraintsValidation;
+import org.bouncycastle.cert.path.validations.KeyUsageValidation;
+import org.bouncycastle.cert.path.validations.ParentCertIssuedValidation;
 import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
-import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
-import org.bouncycastle.crypto.params.RSAPrivateCrtKeyParameters;
 import org.bouncycastle.crypto.util.PrivateKeyFactory;
-import org.bouncycastle.jcajce.provider.asymmetric.rsa.BCRSAPrivateCrtKey;
-import org.bouncycastle.jcajce.provider.asymmetric.rsa.BCRSAPrivateKey;
 import org.bouncycastle.jce.X509KeyUsage;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jce.spec.ECNamedCurveGenParameterSpec;
@@ -32,8 +33,6 @@ import org.bouncycastle.util.encoders.Base64;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
 import org.bouncycastle.util.io.pem.PemWriter;
-
-
 import java.io.*;
 import java.math.BigInteger;
 import java.security.*;
@@ -376,30 +375,15 @@ public class Certifications {
                    return false;
                 }
                if (certChain.size() > 1) {    // not self-signed
-                   CollectionCertStoreParameters params = new CollectionCertStoreParameters(certChain);
-
-                   Certificate rootCert = certChain.get(certChain.size() - 1);
-                   certChain.remove(rootCert);
-                   CertPath certPath = fact.generateCertPath(certChain); //the path does not include the trust anchor
-                    //CertPathValidator implementation uses the CertStore to look up any CRLs or certificates it might need
-                   CertStore store = CertStore.getInstance("Collection", params, "BC");
-                   //Set of TrustAnchor objects containing the self-signed root certificate that validates the intermediate certificate in the path
-                   Set trust = Collections.singleton(new TrustAnchor((X509Certificate) rootCert, null));
-
-                   // perform validation
-                   CertPathValidator validator = CertPathValidator.getInstance("PKIX", "BC");
-
-                   PKIXParameters param = new PKIXParameters(trust);
-                   //param.addCertPathChecker(); // PathChecker: revocation checking
-                   param.addCertStore(store);
-                   param.setDate(new Date());
-                   param.setRevocationEnabled(false);//tell the CertPathValidator implementation not to expect to use CRLs, as some other revocation mechanism has been enabled
-                   try {
-                       CertPathValidatorResult result = validator.validate(certPath, param);
-                   }catch(Exception ee){
-                       ee.printStackTrace();
-                       return false;
+                   X509CertificateHolder[] holders = new X509CertificateHolder[certChain.size()];
+                   for(int i=0; i<certChain.size();i++){
+                       X509Certificate c = (X509Certificate)certChain.get(i);
+                       X509CertificateHolder holder = new X509CertificateHolder(c.getEncoded());
+                       holders[i] = holder;
                    }
+                   org.bouncycastle.cert.path.CertPath path = new org.bouncycastle.cert.path.CertPath(holders);
+                   X509ContentVerifierProviderBuilder verifier = new JcaX509ContentVerifierProviderBuilder().setProvider(BouncyCastleProvider.PROVIDER_NAME);
+                   CertPathValidationResult result = path.validate(new CertPathValidation[]{new ParentCertIssuedValidation(verifier), new BasicConstraintsValidation(), new KeyUsageValidation()});
                }
         }catch(Exception e){
                 e.printStackTrace();
@@ -460,14 +444,15 @@ public class Certifications {
         List list = new ArrayList();
 
         Certificate c = cert;
+        list.add(c);
         while(true) {
 
             Certificate issuerCert = getIssuerCert(c);
             if (issuerCert == null) {
                 return null; // something wrong
             }
-            list.add(c);
-            if (issuerCert == cert) {
+
+            if (issuerCert == c) {
                 // self signed
                 return list;
             } else {
@@ -481,37 +466,32 @@ public class Certifications {
 
     private static Certificate getIssuerCert(Certificate cert){
 
-        X509CertificateHolder ch = null;
-        try {
-            ch = new X509CertificateHolder(cert.getEncoded());
-        } catch (IOException e) {
-            e.printStackTrace();
-            return  null;
-        } catch (CertificateEncodingException e) {
-            e.printStackTrace();
-            return  null;
-        }
-        if(ch.getSubject().equals(ch.getIssuer())){
-            // self signed certificate
-            return cert;
-        }
+        Principal issuerDN = ((X509Certificate)cert).getIssuerDN();
+        if(issuerDN!=null){
+            for(Certificate c : certlist){
+                Principal principal =  ((X509Certificate)c).getSubjectDN();
+                if (principal.equals(issuerDN)){
+                    return c;
+                }
 
-        X500Name issuer = ch.getIssuer();
-        Certificate c= getCertificatebyX500Name(issuer);
-        if(c==null){
-            // TODO: can not find the issuer's certificate
+            }
             return null;
-        }else {
-            return c;
+        }else{
+            issuerDN = ((X509Certificate)cert).getIssuerX500Principal();
+            for(Certificate c : certlist){
+                Principal principal =  ((X509Certificate)c).getSubjectX500Principal();
+                if (principal.equals(issuerDN)){
+                    return c;
+                }
+
+            }
+            return null;
         }
+
+
     }
 
-    private static Certificate getCertificatebyX500Name(X500Name subject){
 
-        // certificate store
-
-        return null;
-    }
 
     public static Certificate readPEMCert(String certfile)
             throws Exception
@@ -543,7 +523,7 @@ public class Certifications {
     {
 
         CertificateFactory cf = CertificateFactory.getInstance("X.509", BC);
-        byte[] contents = getBytesFromFile(crlname);
+        byte[] contents = PDFUtil.getBytesFromFile(crlname);
 
         byte[] codes = Base64.decode(contents);
 
@@ -552,19 +532,7 @@ public class Certifications {
         return crls;
     }
 
-    private static byte[] getBytesFromFile(String filename) throws IOException {
-        FileInputStream fis=new FileInputStream(filename);
-        ByteArrayOutputStream baos=new ByteArrayOutputStream();
-        int thebyte=0;
-        while((thebyte=fis.read())!=-1)
-        {
-            baos.write(thebyte);
-        }
-        fis.close();
-        byte[] contents=baos.toByteArray();
-        baos.close();
-        return contents;
-    }
+
 
     public static List<? extends Certificate> readPEMCertPath(String certpathfile)
     {
@@ -575,7 +543,7 @@ public class Certifications {
             e.printStackTrace();
         }
         try {
-            byte[] contents = getBytesFromFile(certpathfile);
+            byte[] contents = PDFUtil.getBytesFromFile(certpathfile);
             CertPath path= cf.generateCertPath(new ByteArrayInputStream(contents));
             List certs = path.getCertificates();
             Iterator it = path.getCertificates().iterator();

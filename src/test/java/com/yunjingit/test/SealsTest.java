@@ -2,8 +2,10 @@ package com.yunjingit.test;
 
 
 import com.yunjingit.asn1.SESESPictrueInfo;
+import com.yunjingit.asn1.SESSignature;
 import com.yunjingit.asn1.SESeal;
 import com.yunjingit.utils.Certifications;
+import com.yunjingit.utils.PDFUtil;
 import com.yunjingit.utils.Seals;
 import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
 import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
@@ -52,7 +54,52 @@ public void after() throws Exception {
 */ 
 @Test
 public void testEsSignatureSign() throws Exception {
-//TODO: Test goes here... 
+
+    String filename = "/pdf/rfc2560--OCSP.pdf";
+    String filepath = this.getClass().getResource(filename).getFile();
+    byte[] contents = PDFUtil.getBytesFromFile(filepath);
+
+    SESeal stampFromFile = Seals.importSESeal("stamp.pem");
+    if(stampFromFile == null){
+        assert false;
+    }
+    String propertyInfo = "contents:all";
+    Certificate rootcert = Certifications.readPEMCert("sm2_root.cer");
+    Certificate usr1_cert = Certifications.readPEMCert("sm2_usr1.cer");
+    Certificate usr2_cert = Certifications.readPEMCert("sm2_usr2.cer");
+    Certificate usr3_cert = Certifications.readPEMCert("sm2_usr3.cer");
+    Certificate maker_cert = Certifications.readPEMCert("sm2_maker.cer");
+
+    AsymmetricKeyParameter usr2_key = Certifications.readPrivkeyToBC("sm2_usr2.pem");
+    if(usr2_key instanceof ECPrivateKeyParameters){
+        SESSignature sig = Seals.esSignatureSign(contents,stampFromFile,usr2_cert,propertyInfo,(ECPrivateKeyParameters)usr2_key);
+        if(sig == null){
+            assert false;
+        }else{
+            System.out.println(bytesToHex(sig.getEncoded()));
+            boolean result = Seals.exportSESSignature(sig,"sig.pem");
+            if(result){
+                SESSignature sigFromFile = Seals.importSESSignature("sig.pem");
+                if(sigFromFile == null){
+                    assert false;
+                }
+                byte[] data1 = sig.getEncoded();
+                byte[] data2 = sigFromFile.getEncoded();
+                int result_i = Arrays.compareUnsigned(data1,data2);
+                if(result_i == 0){
+                    assert true;
+                }
+            }else{
+                assert false;
+            }
+        }
+    }else{
+
+        assert false;
+    }
+
+
+
 } 
 
 /** 
@@ -82,6 +129,12 @@ public void testEsSignatureVerity() throws Exception {
 */ 
 @Test
 public void testEsealVerify() throws Exception {
+
+    Certificate rootcert = Certifications.readPEMCert("sm2_root.cer");
+    Certificate usr1_cert = Certifications.readPEMCert("sm2_usr1.cer");
+    Certificate usr2_cert = Certifications.readPEMCert("sm2_usr2.cer");
+    Certificate usr3_cert = Certifications.readPEMCert("sm2_usr3.cer");
+    Certificate maker_cert = Certifications.readPEMCert("sm2_maker.cer");
 
     SESeal stampFromFile = Seals.importSESeal("stamp.pem");
     if(stampFromFile == null){
