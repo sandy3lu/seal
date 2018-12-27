@@ -43,7 +43,7 @@ import java.util.*;
 
 public class Certifications {
 
-    private static final String BC = org.bouncycastle.jce.provider.BouncyCastleProvider.PROVIDER_NAME;
+    public static final String BC = org.bouncycastle.jce.provider.BouncyCastleProvider.PROVIDER_NAME;
     private static ArrayList<Certificate> certlist = new ArrayList<Certificate>();
     private static ArrayList<CRL> crllist = new ArrayList<CRL>();
     static {
@@ -369,7 +369,7 @@ public class Certifications {
         //TODO: signature; cert chain;  key usage
         try {
 
-                CertificateFactory fact = CertificateFactory.getInstance("X.509", "BC");
+                CertificateFactory fact = CertificateFactory.getInstance("X.509", Certifications.BC);
                 List<? extends Certificate>  certChain = getCertChain(cert);
                if (certChain==null) {
                    return false;

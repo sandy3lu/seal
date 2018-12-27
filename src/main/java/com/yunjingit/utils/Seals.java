@@ -1,5 +1,6 @@
 package com.yunjingit.utils;
 
+
 import com.yunjingit.asn1.*;
 import org.bouncycastle.asn1.*;
 import org.bouncycastle.asn1.x509.Time;
@@ -10,21 +11,21 @@ import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
 import org.bouncycastle.crypto.params.ECPublicKeyParameters;
 import org.bouncycastle.crypto.signers.SM2Signer;
 import org.bouncycastle.jcajce.provider.asymmetric.ec.BCECPublicKey;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.util.Arrays;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
 import org.bouncycastle.util.io.pem.PemWriter;
 
-import javax.imageio.ImageIO;
-import java.awt.*;
-import java.awt.image.BufferedImage;
+
 import java.io.*;
 import java.math.BigInteger;
 import java.security.NoSuchProviderException;
 import java.security.PublicKey;
+import java.security.Security;
 import java.security.cert.*;
-import java.security.interfaces.ECPrivateKey;
+
 import java.text.ParseException;
 import java.util.Date;
 
@@ -35,6 +36,9 @@ public class Seals {
     static DERIA5String VID = new DERIA5String("yunjingit.com");
     static SM2Signer SM2SINGER = new SM2Signer();
 
+    static {
+        Security.addProvider(new BouncyCastleProvider());
+    }
     /**
      * Es signature sign ses signature.
      *
@@ -45,56 +49,64 @@ public class Seals {
      * @param ecPriv       the ec priv
      * @return the ses signature
      */
-    public static SESSignature esSignatureSign(byte[] contents, SESeal stamp, Certificate signercert, String propertyInfo , ECPrivateKeyParameters ecPriv){
+    public static SESSignature esSignatureSign(byte[] contents, SESeal stamp, Certificate signercert, String propertyInfo , ECPrivateKeyParameters ecPriv) throws ESealException {
 
         // step a
         boolean result = Certifications.certificateVerify((X509Certificate) signercert);
         if(!result){
-            // cert is not valid
-            return null;
+            throw ESealException.CERT_VERIFIED_ERROR;
         }
+
+        // step b
         try {
-            int result_i = esealVerify(stamp.getEncoded(),null);
-            if(result_i!= 1){
-                //TODO:log  stamp is not valid
-                return null;
-            }
+            esealVerify(stamp.getEncoded(),null);
+
         } catch (IOException e) {
             e.printStackTrace();
-            //TODO:log  stamp is not valid
-            return null;
+            throw ESealException.ASN1_FORMAT_ERROR;
         }
-        //
+
+        // step c
         boolean found = false;
          ASN1Sequence certlist = stamp.getEsealInfo().getProperty().getCertList();
         try {
-            byte[] certData = signercert.getEncoded();
+
+            org.bouncycastle.asn1.x509.Certificate cert =  Certifications.convertFromCert((X509Certificate) signercert);
+
+            byte[] certData = cert.getEncoded();
+           // String certstr = OtherUtil.bytesToHex(certData);
+            //System.out.println("signer : " + certstr);
             for (int i=0; i< certlist.size();i++){
                 ASN1Encodable c = certlist.getObjectAt(i);
-                int result_i = Arrays.compareUnsigned(certData, c.toASN1Primitive().getEncoded());
-                if (result_i == 0){
-                    // found equal
-                    found = true;
+                org.bouncycastle.asn1.x509.Certificate certfromlist = org.bouncycastle.asn1.x509.Certificate.getInstance(c);
+
+                byte[] tmp = certfromlist.getEncoded();
+
+                if(certData.length!=tmp.length){
+                    continue;
+                }else{
+                    //String tmpstr = OtherUtil.bytesToHex(tmp);
+                   // System.out.println("testce : " +tmpstr);
+                    int result_i = Arrays.compareUnsigned(certData,tmp);
+                    if(result_i == 0){
+                        found = true;
+                        break;
+                    }
                 }
             }
             if(!found){
-                //TODO: log cert is not in the list
-                return  null;
+                throw ESealException.CERT_NOT_IN_LIST_ERROR;
             }
-        } catch (CertificateEncodingException | IOException e) {
-            e.printStackTrace(); // cert wrong
-            return null;
+        } catch (IOException e) {
+           throw ESealException.CERT_FORMAT_ERROR;
         }
 
-
+        // step d
         byte[] data = processContents(contents, propertyInfo);
-        SM3Digest digest = new SM3Digest();
-        digest.reset();
-        digest.update(data, 0, data.length);
-        byte[] resBuf = new byte[digest.getDigestSize()];
-        digest.doFinal(resBuf, 0);
+        // step e
+        byte[] resBuf = calSM3Digest(data);
 
-        //tobSign
+        // step f : tobeSign
         ASN1Integer version = new ASN1Integer(VERSION);
         ASN1BitString dataHash = new DERBitString(resBuf);
         DERIA5String propertyInfo_ia5 = new DERIA5String(propertyInfo);
@@ -102,45 +114,47 @@ public class Seals {
         try {
             cert = new DEROctetString(signercert.getEncoded());
         } catch (CertificateEncodingException e) {
-            e.printStackTrace();
-            //TODO: log
-            return null;
+            throw ESealException.CERT_FORMAT_ERROR;
         }
 
-        //sm2
         Time time = new Time(new Date()); // transfer to ASN1
         ASN1BitString timeInfo = null;
         try {
             timeInfo = new DERBitString(time.getEncoded());
         } catch (IOException e) {
-            e.printStackTrace();
-            //TODO: log
-            return null;
+            throw ESealException.ASN1_FORMAT_ERROR;
         }
         TBSSign tbsSign = new TBSSign(version,stamp , timeInfo, dataHash, propertyInfo_ia5, cert,SM2signatureAlgorithm );
         byte[] msg ;
         try {
             msg = tbsSign.getEncoded();
         } catch (IOException e) {
-            e.printStackTrace();
-            //TODO: log
-            return null;
+            throw ESealException.ASN1_FORMAT_ERROR;
         }
 
-        // TODO: how to get private key ecPriv
+       // step g
         SM2Signer signer = new SM2Signer();
-        signer.init(true,ecPriv);
+        signer.init(true,ecPriv);  // TODO: how to get private key ecPriv
         signer.update(msg, 0, msg.length);
 
         try {
             byte[] sig = signer.generateSignature();
             ASN1BitString signature = new DERBitString(sig);
+            //step h
             return new SESSignature(tbsSign,signature);
         } catch (CryptoException e) {
-            //TODO: log
-            e.printStackTrace();
+           throw ESealException.CRYPTO_ERROR;
         }
-        return null;
+
+    }
+
+    private static byte[] calSM3Digest(byte[] data) {
+        SM3Digest digest = new SM3Digest();
+        digest.reset();
+        digest.update(data, 0, data.length);
+        byte[] resBuf = new byte[digest.getDigestSize()];
+        digest.doFinal(resBuf, 0);
+        return resBuf;
     }
 
     protected static byte[] processContents(byte[] input, String propertyInfo){
@@ -148,78 +162,101 @@ public class Seals {
         return input;
     }
 
-    public static boolean esSignatureVerity(byte[] contents, byte[] sealsignature){
-
+    /**
+     * Eseal signature verity boolean.
+     *
+     * @param contents      the contents
+     * @param sealsignature the sealsignature
+     * @return the boolean
+     */
+    public static boolean esSignatureVerity(byte[] contents, byte[] sealsignature) throws ESealException {
+        //step a
         ASN1StreamParser aIn = new ASN1StreamParser(sealsignature);
-
         ASN1SequenceParser    seq;
         SESSignature essignature;
         try {
             seq = (ASN1SequenceParser)aIn.readObject();
             essignature =  SESSignature.getInstance(seq);// 格式正确
         } catch (IOException e) {
-            //TODO: log
+            throw ESealException.ESEAL_SIGNATURE_FORMAT_ERROR;
+        }
+
+        // step b
+        byte[] signature = essignature.getSignature().getBytes();
+        byte[] tbsign = new byte[0];
+        try {
+            tbsign = essignature.getToSign().getEncoded();
+        } catch (IOException e) {
+            throw ESealException.ASN1_FORMAT_ERROR;
+        }
+        SM2Signer signer = new SM2Signer();
+        byte[] certdata = essignature.getToSign().getCert().getOctets();
+
+        CertificateFactory cf = null;
+        Certificate signercert = null;
+        try {
+            cf = CertificateFactory.getInstance("X.509",Certifications.BC);
+            signercert = cf.generateCertificate(new ByteArrayInputStream(certdata));
+        } catch (CertificateException e) {
+            throw ESealException.ASN1_FORMAT_ERROR;
+        } catch (NoSuchProviderException e) {
             e.printStackTrace();
-            return false;
         }
 
 
-        try {
-            byte[] signature = essignature.getSignature().getBytes();
-            byte[] tbsign = essignature.getToSign().getEncoded();
-            SM2Signer signer = new SM2Signer();
-            byte[] certdata = essignature.getToSign().getCert().getEncoded();
-            CertificateFactory cf = CertificateFactory.getInstance("X.509", "BC");
-            Certificate signercert = cf.generateCertificate(new ByteArrayInputStream(certdata));
-            ECPublicKeyParameters param = getEcPublicKeyParameters(signercert);
-            if(param == null){
-                // something wrong with extract PUBLIC key
-                return false;
-            }
+        ECPublicKeyParameters param = getEcPublicKeyParameters(signercert);
+        if(param == null){
+            throw ESealException.CERT_FORMAT_ERROR;
+        }
             //signature vaild
-            signer.init(false, param);
-            signer.update(tbsign, 0, tbsign.length);
-            boolean result = signer.verifySignature(signature);
-            if (!result){
-                //TODO: log verify failed
-                return false;
-            }
+        signer.init(false, param);
+        signer.update(tbsign, 0, tbsign.length);
+        boolean result = signer.verifySignature(signature);
+        if (!result){
+            throw ESealException.ESEAL_SIGNATURE_VERIFIED_ERROR;
+        }
 
-            ASN1BitString timeInfo = essignature.getToSign().getTimeInfo();
-           String timestr = timeInfo.getString();
-            ASN1UTCTime time = new ASN1UTCTime(timestr);
-             result = Certifications.certificateVerify((X509Certificate) signercert, time.getDate(),false);
-            if(!result){
-                return false; // cert not vaild
-            }
+            //step c & d
+        ASN1BitString timeInfo = essignature.getToSign().getTimeInfo();
+        byte[] timedata = timeInfo.getOctets();
+        ASN1UTCTime time = null;
+        try {
+            time = (ASN1UTCTime)ASN1UTCTime.fromByteArray(timedata);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
 
-            // verify hash
+        Date signedDate = null;
+        try {
+            signedDate = time.getDate();
+        } catch (ParseException e) {
+            throw ESealException.ASN1_FORMAT_ERROR;
+        }
+        result = Certifications.certificateVerify((X509Certificate) signercert, signedDate,false);
+         if(!result){
+                throw ESealException.CERT_VERIFIED_ERROR;
+         }
+
+            //step e: verify hash
             DERIA5String proper = essignature.getToSign().getPropertyInfo();
             String propertyInfo = proper.getString();
-            byte[] data = processContents(contents, propertyInfo);
-            SM3Digest digest = new SM3Digest();
-            digest.reset();
-            digest.update(data, 0, data.length);
-            byte[] resBuf = new byte[digest.getDigestSize()];
-            digest.doFinal(resBuf, 0);
+            byte[] data = processContents(contents, propertyInfo); // step 1)
+            byte[] resBuf = calSM3Digest(data); // step 2)
             ASN1BitString datahash = essignature.getToSign().getDataHash();
-            byte[] dataHash  = datahash.getEncoded();
+            byte[] dataHash  = datahash.getOctets();
             int result_i = Arrays.compareUnsigned(dataHash, resBuf);
             if (result_i != 0){
-                return false; // hash failed
+                throw ESealException.ESEAL_SIGNATURE_VERIFIED_ERROR;
             }
 
-            //verify stamp
-            byte[] stampdata = essignature.getToSign().getEseal().getEncoded();
-            result_i = esealVerify(stampdata, time.getDate());
-            if(result_i != 1){
-                // verify stamp failed
-                return false;
-            }
-        } catch (IOException | CertificateException | NoSuchProviderException | ParseException e) {
-            e.printStackTrace();
-            return false;
+        // step f : verify stamp
+        byte[] stampdata = new byte[0];
+        try {
+            stampdata = essignature.getToSign().getEseal().getEncoded();
+        } catch (IOException e) {
+            throw ESealException.ASN1_FORMAT_ERROR;
         }
+        esealVerify(stampdata, signedDate);
 
         return true;
     }
@@ -231,7 +268,7 @@ public class Seals {
      * @param refDate   the reference date
      * @return the int  1 successful; 2 wrong format; 80 not support in this impl; 3 signature wrong; 4 maker cert is invaild; 5 overdue
      */
-    public static int esealVerify(byte[]  stampdata, Date refDate){
+    public static boolean esealVerify(byte[]  stampdata, Date refDate) throws ESealException {
 
         SESeal stamp=null;
         byte[] msg = null;
@@ -245,38 +282,44 @@ public class Seals {
         Date startdate;
 
         //step a
-        try {
-            ASN1StreamParser aIn = new ASN1StreamParser(stampdata);
-            ASN1SequenceParser seq = (ASN1SequenceParser)aIn.readObject();
-            stamp =  SESeal.getInstance(seq); //电子印章格式符合
 
-            SESSealInfo esealInfo = stamp.getEsealInfo();
-            cert = stamp.getSignInfo().getCert();
-            algo = stamp.getSignInfo().getSignatureAlgorithm();
-            ASN1EncodableVector v = new ASN1EncodableVector();
-            v.add(esealInfo);
-            v.add(cert);
-            v.add(algo);
-            DERSequence se =  new DERSequence(v);
+        ASN1StreamParser aIn = new ASN1StreamParser(stampdata);
+        ASN1SequenceParser seq = null;
+        try {
+            seq = (ASN1SequenceParser)aIn.readObject();
+        } catch (IOException e) {
+            throw ESealException.ASN1_FORMAT_ERROR;
+        }
+        stamp =  SESeal.getInstance(seq); //电子印章格式符合
+
+        SESSealInfo esealInfo = stamp.getEsealInfo();
+        cert = stamp.getSignInfo().getCert();
+        algo = stamp.getSignInfo().getSignatureAlgorithm();
+        ASN1EncodableVector v = new ASN1EncodableVector();
+        v.add(esealInfo);
+        v.add(cert);
+        v.add(algo);
+        DERSequence se =  new DERSequence(v);
+        try {
             msg = se.getEncoded();
-            DERBitString bs = (DERBitString) stamp.getSignInfo().getSignData();
+        } catch (IOException e) {
+            throw ESealException.ASN1_FORMAT_ERROR;
+        }
+        DERBitString bs = (DERBitString) stamp.getSignInfo().getSignData();
             signature = bs.getOctets();
             CertificateFactory cf = null;
             try {
-                cf = CertificateFactory.getInstance("X.509", "BC");
+                cf = CertificateFactory.getInstance("X.509", Certifications.BC);
                 byte[] certdata = cert.getOctets();
                 signercert = cf.generateCertificate(new ByteArrayInputStream(certdata));
                 param = getEcPublicKeyParameters(signercert);
                 if(param == null){
-                    // something wrong with extract PUBLIC key
-                    return 2;
+                    throw ESealException.ASN1_FORMAT_ERROR;
                 }
             } catch (CertificateException e) {
-                e.printStackTrace();
-                return 2;
+                throw ESealException.ASN1_FORMAT_ERROR;
             } catch (NoSuchProviderException e) {
-                e.printStackTrace();
-                return 2;
+               throw ESealException.ESEAL_MISSING_BC_ERROR;
             }
 
             ASN1UTCTime end = stamp.getEsealInfo().getProperty().getValidEnd();
@@ -285,15 +328,11 @@ public class Seals {
                 enddate = end.getDate();
                 startdate = start.getDate();
             } catch (ParseException e) {
-                e.printStackTrace();
-                return 2;
+                throw ESealException.ASN1_FORMAT_ERROR;
             }
 
 
-        } catch (IOException e) {
-            e.printStackTrace();
-            return 2;// wrong format
-        }
+
 
         //step b
          if(algo.equals(SM2signatureAlgorithm)){ //SM2
@@ -303,19 +342,18 @@ public class Seals {
                 boolean result = SM2SINGER.verifySignature(signature);
                 if(!result){
                     // signature verification fail
-                    return 3;
+                    throw ESealException.ESEAL_SIGNATURE_VERIFIED_ERROR;
                 }
             }else{
                 // not support RSA
-                return 80;
+                throw ESealException.ESEAL_NOT_SUPPORT_ERROR;
             }
 
         //step c
         boolean result = Certifications.certificateVerify((X509Certificate) signercert);
         if(!result){
 
-            // cert verified fail
-            return 4;
+           throw ESealException.CERT_VERIFIED_ERROR;
         }
 
         //step d
@@ -324,9 +362,9 @@ public class Seals {
             date = refDate;
         }
         if(!date.before(startdate) && !date.after(enddate)){
-            return 1;
+            return true;
         }else {
-            return 5;
+            throw ESealException.ESEAL_OVERDUE_ERROR;
         }
 
     }
