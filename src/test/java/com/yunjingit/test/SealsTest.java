@@ -12,9 +12,8 @@ import org.bouncycastle.crypto.params.AsymmetricKeyParameter;
 import org.bouncycastle.crypto.params.ECPrivateKeyParameters;
 import org.bouncycastle.crypto.params.ECPublicKeyParameters;
 import org.bouncycastle.util.Arrays;
-import org.junit.Test;
-import org.junit.Before; 
-import org.junit.After;
+import org.junit.*;
+import org.junit.runners.MethodSorters;
 
 import java.security.PrivateKey;
 import java.security.cert.Certificate;
@@ -30,12 +29,14 @@ import java.util.Date;
 * @author <Authors name> 
 * @since <pre>十二月 24, 2018</pre> 
 * @version 1.0 
-*/ 
-public class SealsTest { 
+*/
 
-@Before
-public void before() throws Exception {
-    /*
+@FixMethodOrder(MethodSorters.NAME_ASCENDING)
+public class SealsTest {
+
+@BeforeClass
+public static void beforeClass() throws Exception {
+
     String issuerString = "CN=root,OU=单位,O=组织";
     Certificate rootcert = Certifications.generateV3CertificateSM2(issuerString,"sm2_root.pem",null,null);
     PrivateKey rootkey = Certifications.readPrivkey("sm2_root.pem");
@@ -44,7 +45,6 @@ public void before() throws Exception {
     Certificate user2cert = Certifications.generateV3CertificateSM2("CN=user2,OU=单位,O=组织","sm2_usr2.pem",(X509Certificate) rootcert,rootkey);
     Certificate user3cert = Certifications.generateV3CertificateSM2("CN=user3,OU=单位,O=组织","sm2_usr3.pem",(X509Certificate) rootcert,rootkey);
     Certificate makercert = Certifications.generateV3CertificateSM2("CN=maker,OU=单位,O=组织","sm2_maker.pem",(X509Certificate) rootcert,rootkey);
-    */
 }
 
 @After
@@ -57,7 +57,7 @@ public void after() throws Exception {
 * 
 */ 
 @Test
-public void testEsSignatureSign() throws Exception {
+public void test02EsSignatureSign() throws Exception {
 
     String filename = "/pdf/rfc2560--OCSP.pdf";
     String filepath = this.getClass().getResource(filename).getFile();
@@ -123,7 +123,7 @@ public void testProcessContents() throws Exception {
 * 
 */ 
 @Test
-public void testEsSignatureVerity() throws Exception {
+public void test03EsSignatureVerity() throws Exception {
 
     String filename = "/pdf/rfc2560--OCSP.pdf";
     String filepath = this.getClass().getResource(filename).getFile();
@@ -162,7 +162,7 @@ public void testEsSignatureVerity() throws Exception {
 * 
 */ 
 @Test
-public void testEsealVerify() throws Exception {
+public void test01EsealVerify() throws Exception {
 
     Certificate rootcert = Certifications.readPEMCert("sm2_root.cer");
     Certificate usr1_cert = Certifications.readPEMCert("sm2_usr1.cer");
@@ -193,7 +193,7 @@ public void testEsealVerify() throws Exception {
 * 
 */ 
 @Test
-public void testEsealGenerate() throws Exception {
+public void test00EsealGenerate() throws Exception {
     String esID="10001000";
     int type = 1;
     String name = "test stamp";

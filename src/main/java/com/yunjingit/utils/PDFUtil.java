@@ -27,6 +27,8 @@ public class PDFUtil {
     static float scale_h = PageSize.A4.getHeight()/A4_HEIGHT_MM;
     static float scale_w = PageSize.A4.getWidth()/A4_WIDTH_MM;
 
+    static  byte[] PDF_END = new byte[]{0x45, 0x4f,0x46, 0x0a};
+
     public static byte[] readPDF(String filename){
         File tmpFile = new File(filename);
         if (!filename.toLowerCase().endsWith(".pdf") && !tmpFile.isFile()) {
@@ -40,7 +42,7 @@ public class PDFUtil {
                 PdfReader reader = new PdfReader(filename);
                 reader.getPageSize(1);
 
-                System.out.printf("h: %f  w: %f \n" , scale_h, scale_w);
+
                 int num = reader.getNumberOfPages();
                 byte[] data= reader.getPageContent(1);
                 for(int i=2; i<=num;i++){
@@ -55,6 +57,51 @@ public class PDFUtil {
             return null;
         }
 
+    }
+
+    public static byte[] getPDFcontentForSign(byte[] pdf){
+
+        int index = ByteIndexOf(pdf,PDF_END);
+        if(index>0){
+            byte[] result = new byte[index +PDF_END.length];
+            System.arraycopy(pdf, 0, result, 0, result.length);
+            return result;
+        }else {
+            return null;
+        }
+
+
+    }
+
+    /// <param name="srcBytes">源数组</param>
+    /// <param name="searchBytes">查找的数组</param>
+    /// <returns>返回的索引位置；否则返回值为 -1。</returns>
+    private static int ByteIndexOf(byte[] srcBytes, byte[] searchBytes)
+    {
+        if (srcBytes == null) { return -1; }
+        if (searchBytes == null) { return -1; }
+        if (srcBytes.length == 0) { return -1; }
+        if (searchBytes.length == 0) { return -1; }
+        if (srcBytes.length < searchBytes.length) { return -1; }
+        for (int i = 0; i <= srcBytes.length - searchBytes.length; i++)
+        {
+            if (srcBytes[i] == searchBytes[0])
+            {
+                //System.out.printf("%d: %d %d %d %d\n",i, srcBytes[i],srcBytes[i+1],srcBytes[i+2],srcBytes[i+3]);
+                if (searchBytes.length == 1) { return i; }
+                boolean flag = true;
+                for (int j = 1; j < searchBytes.length; j++)
+                {
+                    if (srcBytes[i + j] != searchBytes[j])
+                    {
+                        flag = false;
+                        break;
+                    }
+                }
+                if (flag) { return i; }
+            }
+        }
+        return -1;
     }
 
     private static byte[] byteMerger(byte[] bt1, byte[] bt2){
