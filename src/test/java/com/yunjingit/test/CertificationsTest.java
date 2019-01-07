@@ -1,6 +1,7 @@
 package com.yunjingit.test;
 
-import org.junit.Test; 
+import org.bouncycastle.util.encoders.Base64;
+import org.junit.Test;
 import org.junit.Before; 
 import org.junit.After;
 
@@ -131,7 +132,10 @@ public void testreadBASE64CRL() throws Exception {
 */ 
 @Test
 public void testReadPEMCertPath() throws Exception { 
-//TODO: Test goes here... 
+//TODO: Test goes here...
+    byte[] data = new byte[]{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+
+    // java.util.Base64.getUrlEncoder().encode();
 } 
 
 
