@@ -1,5 +1,6 @@
 package com.yunjingit.test;
 
+import com.yunjingit.utils.Certifications;
 import org.bouncycastle.util.encoders.Base64;
 import org.junit.Test;
 import org.junit.Before; 
@@ -61,7 +62,18 @@ public void testGenerateV3CertificateSM2() throws Exception {
 */ 
 @Test
 public void testcertificateVerify() throws Exception {
-//TODO: Test goes here... 
+    Certificate rootcert = Certifications.readPEMCert("sm2_root.cer");
+    Certificate usr1_cert = Certifications.readPEMCert("sm2_usr1.cer");
+    Certificate usr2_cert = Certifications.readPEMCert("sm2_usr2.cer");
+    Certificate usr3_cert = Certifications.readPEMCert("sm2_usr3.cer");
+    Certificate maker_cert = Certifications.readPEMCert("sm2_maker.cer");
+
+    boolean result = Certifications.certificateVerify((X509Certificate) usr2_cert);
+    if(result){
+        assert true;
+    }else{
+        assert false;
+    }
 } 
 
 /** 
