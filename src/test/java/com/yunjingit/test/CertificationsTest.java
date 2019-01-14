@@ -1,15 +1,19 @@
 package com.yunjingit.test;
 
+
 import org.bouncycastle.cert.X509CertificateHolder;
 import org.bouncycastle.cms.CMSSignedData;
 import org.bouncycastle.util.CollectionStore;
+
+import com.yunjingit.utils.Certifications;
+
 import org.bouncycastle.util.encoders.Base64;
 import org.junit.Test;
 import org.junit.Before; 
 import org.junit.After;
 
 import java.io.FileOutputStream;
-import java.io.FileWriter;
+
 import java.security.cert.CRL;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
@@ -68,7 +72,18 @@ public void testGenerateV3CertificateSM2() throws Exception {
 */ 
 @Test
 public void testcertificateVerify() throws Exception {
-//TODO: Test goes here... 
+    Certificate rootcert = Certifications.readPEMCert("sm2_root.cer");
+    Certificate usr1_cert = Certifications.readPEMCert("sm2_usr1.cer");
+    Certificate usr2_cert = Certifications.readPEMCert("sm2_usr2.cer");
+    Certificate usr3_cert = Certifications.readPEMCert("sm2_usr3.cer");
+    Certificate maker_cert = Certifications.readPEMCert("sm2_maker.cer");
+
+    boolean result = Certifications.certificateVerify((X509Certificate) usr2_cert);
+    if(result){
+        assert true;
+    }else{
+        assert false;
+    }
 } 
 
 /** 

@@ -17,6 +17,8 @@ import org.bouncycastle.cert.jcajce.JcaX509ContentVerifierProviderBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.cert.path.CertPathValidation;
+import org.bouncycastle.cert.path.CertPathValidationContext;
+import org.bouncycastle.cert.path.CertPathValidationException;
 import org.bouncycastle.cert.path.CertPathValidationResult;
 import org.bouncycastle.cert.path.validations.BasicConstraintsValidation;
 import org.bouncycastle.cert.path.validations.KeyUsageValidation;
@@ -381,9 +383,15 @@ public class Certifications {
                        X509CertificateHolder holder = new X509CertificateHolder(c.getEncoded());
                        holders[i] = holder;
                    }
-                   org.bouncycastle.cert.path.CertPath path = new org.bouncycastle.cert.path.CertPath(holders);
+                   //org.bouncycastle.cert.path.CertPath path = new org.bouncycastle.cert.path.CertPath(holders);
+                   //X509ContentVerifierProviderBuilder verifier = new JcaX509ContentVerifierProviderBuilder().setProvider(BouncyCastleProvider.PROVIDER_NAME);
+                   //CertPathValidationResult result = path.validate(new CertPathValidation[]{new ParentCertIssuedValidation(verifier), new BasicConstraintsValidation(), new KeyUsageValidation()});
                    X509ContentVerifierProviderBuilder verifier = new JcaX509ContentVerifierProviderBuilder().setProvider(BouncyCastleProvider.PROVIDER_NAME);
-                   CertPathValidationResult result = path.validate(new CertPathValidation[]{new ParentCertIssuedValidation(verifier), new BasicConstraintsValidation(), new KeyUsageValidation()});
+                   verifier = new TokenX509ContentVerifierProviderBuilder();
+                   certPathVaild(holders,new ParentCertIssuedValidation(verifier));
+                   certPathVaild(holders,new BasicConstraintsValidation());
+                   //certPathVaild(holders,new KeyUsageValidation());
+
                }
         }catch(Exception e){
                 e.printStackTrace();
@@ -402,6 +410,31 @@ public class Certifications {
             }
         }
         return true;
+    }
+
+
+    private static void certPathVaild(X509CertificateHolder[] certificates, CertPathValidation ruleSet) throws CertPathValidationException {
+
+        Set criticalExtensions = new HashSet();
+
+        for (int i = 0; i != certificates.length; i++)
+        {
+            criticalExtensions.addAll(certificates[i].getCriticalExtensionOIDs());
+        }
+
+        CertPathValidationContext context = new CertPathValidationContext(criticalExtensions);
+        for (int j = certificates.length - 1; j >= 0; j--)
+        {
+            try
+            {
+                context.setIsEndEntity(j == 0);
+                ruleSet.validate(context, certificates[j]);
+            }
+            catch (CertPathValidationException e)
+            {
+                throw e;
+            }
+        }
     }
 
     private static CertPath buildCertPath(X509Certificate endCert, X509Certificate rootCert){
