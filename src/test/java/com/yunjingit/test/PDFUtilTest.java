@@ -105,8 +105,10 @@ public void testSign() throws Exception {
         if(sigFromFile == null){
             assert false;
         }
+
+        byte[] con = PDFUtil.getBytesFromFile(dest);
         try {
-            byte[] data = PDFUtil.getSignatures(dest);
+            byte[] data = PDFUtil.getSignatures(con);
             byte[] sig = sigFromFile.getEncoded();
             int result_i = Arrays.compareUnsigned(data,sig);
             if (result_i == 0){
@@ -137,9 +139,9 @@ public void testSign() throws Exception {
     @Test
     public void testGetSignatures2() throws Exception {
         String dest = "g://test--signed.pdf";
-
+        byte[] contents = PDFUtil.getBytesFromFile(dest)    ;
         try {
-            PDFUtil.getSignatures(dest, false);
+            PDFUtil.getSignatures(contents, false);
 
             assert true;
 
