@@ -76,9 +76,7 @@ public class PDFUtil {
 
     }
 
-    /// <param name="srcBytes">源数组</param>
-    /// <param name="searchBytes">查找的数组</param>
-    /// <returns>返回的索引位置；否则返回值为 -1。</returns>
+
     private static int ByteIndexOf(byte[] srcBytes, byte[] searchBytes)
     {
         if (srcBytes == null) { return -1; }
@@ -90,7 +88,7 @@ public class PDFUtil {
         {
             if (srcBytes[i] == searchBytes[0])
             {
-                //System.out.printf("%d: %d %d %d %d\n",i, srcBytes[i],srcBytes[i+1],srcBytes[i+2],srcBytes[i+3]);
+
                 if (searchBytes.length == 1) { return i; }
                 boolean flag = true;
                 for (int j = 1; j < searchBytes.length; j++)
@@ -200,10 +198,10 @@ public class PDFUtil {
         }
     }
 
-    public static byte[] getSignatures(String src) throws IOException, GeneralSecurityException {
+    public static byte[] getSignatures(byte[] src) throws IOException, GeneralSecurityException {
         return getSignatures(src,true);
     }
-    public static byte[] getSignatures(String src, boolean isYunjing) throws IOException, GeneralSecurityException {
+    public static byte[] getSignatures(byte[] src, boolean isYunjing) throws IOException, GeneralSecurityException {
         PdfReader reader = new PdfReader(src);
 
         AcroFields fields = reader.getAcroFields();
