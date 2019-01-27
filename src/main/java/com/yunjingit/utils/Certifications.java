@@ -132,8 +132,7 @@ public class Certifications {
         }catch(IOException e){
             e.printStackTrace();
         }
-
-
+        saveAsP12(keyfile, privKey, cert);
         return cert;
 
     }
@@ -273,8 +272,34 @@ public class Certifications {
             e.printStackTrace();
         }
 
+        saveAsP12(keyfile, privKey, cert);
         return cert;
 
+    }
+
+    private static void saveAsP12(String keyfile, PrivateKey privKey, X509Certificate cert) {
+        Certificate[] chain = new Certificate[1];
+        chain[0] = cert;
+        KeyStore store = null;
+        try {
+            store = KeyStore.getInstance("PKCS12", "BC");
+            store.load(null, null);
+            store.setKeyEntry("privateKey", privKey, null, chain);
+            String pfxfile = keyfile.replace(".pem", ".pfx");
+            char[] passwd = "123321".toCharArray();
+            store.store(new FileOutputStream(pfxfile), passwd);
+
+        } catch (KeyStoreException e) {
+            e.printStackTrace();
+        } catch (NoSuchProviderException e) {
+            e.printStackTrace();
+        } catch (CertificateException e) {
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private static void savePrivkey(String keyfile, PrivateKey privKey) throws IOException{
@@ -301,7 +326,6 @@ public class Certifications {
         PemObject keyobj = rd.readPemObject();
         PrivateKeyInfo privateKeyInfo = PrivateKeyInfo.getInstance(ASN1Primitive.fromByteArray(keyobj.getContent()));
         AsymmetricKeyParameter key = PrivateKeyFactory.createKey(privateKeyInfo);
-       // PrivateKey     key = BouncyCastleProvider.getPrivateKey(privateKeyInfo);
 
         return key;
     }

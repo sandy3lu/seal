@@ -1,18 +1,27 @@
 package com.yunjingit.test;
 
 
+import com.itextpdf.text.BadElementException;
+import com.itextpdf.text.DocumentException;
+import com.itextpdf.text.Image;
+import com.itextpdf.text.Rectangle;
+import com.itextpdf.text.pdf.PdfReader;
+import com.itextpdf.text.pdf.PdfSignatureAppearance;
+import com.itextpdf.text.pdf.PdfStamper;
+import com.itextpdf.text.pdf.security.DigestAlgorithms;
+import com.itextpdf.text.pdf.security.MakeSignature;
 import com.yunjingit.asn1.SESSignature;
-import com.yunjingit.utils.Certifications;
-import com.yunjingit.utils.OtherUtil;
-import com.yunjingit.utils.PDFUtil;
-import com.yunjingit.utils.Seals;
+import com.yunjingit.utils.*;
 import org.bouncycastle.util.Arrays;
 import org.junit.Test;
 import org.junit.Before; 
 import org.junit.After;
 
-import java.io.IOException;
+import javax.xml.crypto.dsig.DigestMethod;
+import java.io.*;
+import java.security.*;
 import java.security.cert.Certificate;
+import java.security.cert.CertificateException;
 
 /** 
 * PDFUtil Tester. 
@@ -190,4 +199,132 @@ public void testSign() throws Exception {
             assert false;
         }
     }
+
+    @Test
+    public void testPDFSignRSA(){
+
+        String filename = "/pdf/rfc2560--OCSP.pdf";
+        String filepath = this.getClass().getResource(filename).getFile();
+        String dest = "rfc2560--OCSP--rsa-signed.pdf";
+        String imagefile = this.getClass().getResource("/img/100sh.png").getFile();
+        File f = new File("rsa-sign.pfx");
+
+        KeyStore pkcs12 = null;
+        try {
+            pkcs12 = KeyStore.getInstance("PKCS12", "BC");
+        } catch (KeyStoreException e) {
+            e.printStackTrace();
+        } catch (NoSuchProviderException e) {
+            e.printStackTrace();
+        }
+
+        if(!f.exists()) {
+            Certifications.generateV3Certificate("CN=root,OU=yunjing,O=research", "rsa-sign.pem", "rsa-sign-cert.cer");
+
+        }
+        try {
+            pkcs12.load(new FileInputStream("rsa-sign.pfx"), "123321".toCharArray());
+            PrivateKey pk = (PrivateKey)pkcs12.getKey("privateKey", null);
+            Certificate[] pubCerts = pkcs12.getCertificateChain("privateKey");
+
+            PdfReader reader = new PdfReader(filepath);
+            FileOutputStream os = new FileOutputStream(dest);
+
+            PdfStamper stamper = PdfStamper.createSignature(reader, os, '\0', null, true);
+
+            PdfSignatureAppearance appearance = stamper.getSignatureAppearance();
+            appearance.setReason("test rsa");
+            appearance.setLocation(" pdf util test");
+            appearance.setVisibleSignature(new Rectangle(200, 200, 300, 300), 1, "sigRSA");
+
+            Image image = Image.getInstance(imagefile);
+            appearance.setSignatureGraphic(image);
+            appearance.setCertificationLevel(PdfSignatureAppearance.NOT_CERTIFIED);
+            appearance.setRenderingMode(PdfSignatureAppearance.RenderingMode.GRAPHIC);
+
+            PDFUtil.signRSA(pk, DigestAlgorithms.SHA1,appearance,pubCerts, MakeSignature.CryptoStandard.CMS);
+            assert true;
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (CertificateException e) {
+            e.printStackTrace();
+        } catch (UnrecoverableKeyException e) {
+            e.printStackTrace();
+        } catch (KeyStoreException e) {
+            e.printStackTrace();
+        } catch (BadElementException e) {
+            e.printStackTrace();
+        } catch (DocumentException e) {
+            e.printStackTrace();
+        }
+
+
+    }
+
+
+    @Test
+    public void testPDFSignSM2(){
+
+        String filename = "/pdf/rfc2560--OCSP.pdf";
+        String filepath = this.getClass().getResource(filename).getFile();
+        String dest = "rfc2560--OCSP--SM2-signed.pdf";
+        String imagefile = this.getClass().getResource("/img/100sh.png").getFile();
+        File f = new File("sm2-sign.pfx");
+
+        KeyStore pkcs12 = null;
+        try {
+            pkcs12 = KeyStore.getInstance("PKCS12", "BC");
+        } catch (KeyStoreException e) {
+            e.printStackTrace();
+        } catch (NoSuchProviderException e) {
+            e.printStackTrace();
+        }
+
+        if(!f.exists()) {
+            Certifications.generateV3CertificateSM2("CN=root,OU=yunjing,O=research", "sm2-sign.pem", null,null);
+
+        }
+        try {
+            pkcs12.load(new FileInputStream("sm2-sign.pfx"), "123321".toCharArray());
+            PrivateKey pk = (PrivateKey)pkcs12.getKey("privateKey", null);
+            Certificate[] pubCerts = pkcs12.getCertificateChain("privateKey");
+
+            PdfReader reader = new PdfReader(filepath);
+            FileOutputStream os = new FileOutputStream(dest);
+
+            PdfStamper stamper = PdfStamper.createSignature(reader, os, '\0', null, true);
+
+            PdfSignatureAppearance appearance = stamper.getSignatureAppearance();
+            appearance.setReason("test sm2");
+            appearance.setLocation(" pdf util test");
+            appearance.setVisibleSignature(new Rectangle(200, 200, 300, 300), 1, "sigRSA");
+
+            Image image = Image.getInstance(imagefile);
+            appearance.setSignatureGraphic(image);
+            appearance.setCertificationLevel(PdfSignatureAppearance.NOT_CERTIFIED);
+            appearance.setRenderingMode(PdfSignatureAppearance.RenderingMode.GRAPHIC);
+
+            PDFUtil.signSM2(pk, appearance,pubCerts, MakeSignature.CryptoStandard.CMS);
+            assert true;
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (CertificateException e) {
+            e.printStackTrace();
+        } catch (UnrecoverableKeyException e) {
+            e.printStackTrace();
+        } catch (KeyStoreException e) {
+            e.printStackTrace();
+        } catch (BadElementException e) {
+            e.printStackTrace();
+        } catch (DocumentException e) {
+            e.printStackTrace();
+        }
+
+
+    }
+
 } 

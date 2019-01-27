@@ -6,6 +6,7 @@ import com.itextpdf.text.PageSize;
 import com.itextpdf.text.Rectangle;
 import com.itextpdf.text.pdf.*;
 
+import com.itextpdf.text.pdf.security.*;
 import com.yunjingit.asn1.SESESPictrueInfo;
 import com.yunjingit.asn1.SESSignature;
 
@@ -14,6 +15,8 @@ import java.math.BigInteger;
 
 import java.security.GeneralSecurityException;
 
+import java.security.PrivateKey;
+import java.security.cert.Certificate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -179,9 +182,6 @@ public class PDFUtil {
         dic2.put(PdfName.CONTENTS, new PdfString(paddedSig).setHexWriting(true));
         appearance.close(dic2);
 
-        //ExternalDigest digest = new BouncyCastleDigest();
-        //ExternalSignature signature = new PrivateKeySignature(pk, digestAlgorithm, null);
-        //MakeSignature.signDetached(appearance, digest, signature, chain, null, null, null, 0, MakeSignature.CryptoStandard.CMS);
 
         try {
             if (stamper != null) {
@@ -248,6 +248,39 @@ public class PDFUtil {
 
         }
         return null;
+    }
+
+
+
+    public static void signRSA(PrivateKey pk, String digestAlgorithm,PdfSignatureAppearance appearance, Certificate[] chain, MakeSignature.CryptoStandard subfilter){
+
+        ExternalDigest digest = new BouncyCastleDigest();
+
+        ExternalSignature signature = new PrivateKeySignature(pk, digestAlgorithm, null);
+
+        try {
+            MakeSignature.signDetached(appearance, digest, signature, chain, null, null, null, 0, subfilter);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (DocumentException e) {
+            e.printStackTrace();
+        } catch (GeneralSecurityException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    public static void signSM2(PrivateKey pk, PdfSignatureAppearance appearance, Certificate[] chain, MakeSignature.CryptoStandard subfilter){
+
+        ExternalDigest digest = new SM3PdfDigest();
+        ExternalSignature signature = new SM2KeySignature(pk);
+
+        try {
+            MakeSignature.signDetached(appearance, digest, signature, chain, null, null, null, 0, subfilter);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
 
 }
