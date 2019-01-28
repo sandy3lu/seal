@@ -12,16 +12,34 @@ import com.itextpdf.text.pdf.security.DigestAlgorithms;
 import com.itextpdf.text.pdf.security.MakeSignature;
 import com.yunjingit.asn1.SESSignature;
 import com.yunjingit.utils.*;
+import org.bouncycastle.crypto.CipherParameters;
+import org.bouncycastle.crypto.InvalidCipherTextException;
+import org.bouncycastle.crypto.engines.AESEngine;
+import org.bouncycastle.crypto.engines.SM2Engine;
+import org.bouncycastle.crypto.engines.SM4Engine;
+import org.bouncycastle.crypto.params.*;
+import org.bouncycastle.jcajce.provider.asymmetric.ec.BCECPublicKey;
+import org.bouncycastle.jcajce.provider.symmetric.SM4;
+import org.bouncycastle.jce.spec.ECParameterSpec;
+import org.bouncycastle.math.ec.ECCurve;
+import org.bouncycastle.math.ec.ECPoint;
+import org.bouncycastle.math.ec.custom.gm.SM2P256V1Curve;
+import org.bouncycastle.pqc.math.linearalgebra.ByteUtils;
 import org.bouncycastle.util.Arrays;
+import org.bouncycastle.util.Strings;
+import org.bouncycastle.util.encoders.Hex;
 import org.junit.Test;
 import org.junit.Before; 
 import org.junit.After;
 
+import javax.crypto.spec.SecretKeySpec;
 import javax.xml.crypto.dsig.DigestMethod;
 import java.io.*;
+import java.math.BigInteger;
 import java.security.*;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
+import java.security.interfaces.ECPrivateKey;
 
 /** 
 * PDFUtil Tester. 
@@ -329,4 +347,143 @@ public void testSign() throws Exception {
 
     }
 
+    @Test
+    public void testSM4(){
+        String s = "0123456789abcdeffedcba9876543210";
+        String plain = "0123456789abcdeffedcba9876543210";
+        String cipher =  "681edf34d206965e86b3e94f536e4246";
+        Key key = new SecretKeySpec(Hex.decode(s), "SM4");
+        SM4Engine sm4Engine = new SM4Engine();
+        KeyParameter keyParameter = new KeyParameter(key.getEncoded());
+        sm4Engine.init(true,keyParameter);
+        byte[] out = new byte[16];
+        int len = sm4Engine.processBlock(Hex.decode(plain),0,out,0);
+        System.out.println();
+        if(ByteUtils.toHexString(out).equals(cipher)){
+            sm4Engine.init(false,keyParameter);
+            byte[] result = new byte[16];
+            int len2 = sm4Engine.processBlock(out,0,result,0);
+            System.out.println();
+            if(ByteUtils.toHexString(result).equals(plain)){
+                assert true;
+            }else{
+                assert false;
+            }
+        }else {
+            assert false;
+        }
+
+    }
+
+    @Test
+    public void testAES128(){
+        //128bit
+        String s = "000102030405060708090a0b0c0d0e0f";
+        String plain = "00112233445566778899aabbccddeeff";
+        String cipher =  "69c4e0d86a7b0430d8cdb78070b4c55a";
+        Key key = new SecretKeySpec(Hex.decode(s), "AES");
+        AESEngine aesEngine = new AESEngine();
+        KeyParameter keyParameter = new KeyParameter(key.getEncoded());
+        aesEngine.init(true,keyParameter);
+        byte[] out = new byte[16];
+        int len = aesEngine.processBlock(Hex.decode(plain),0,out,0);
+        System.out.println();
+        if(ByteUtils.toHexString(out).equals(cipher)){
+            aesEngine.init(false,keyParameter);
+            byte[] result = new byte[16];
+            int len2 = aesEngine.processBlock(out,0,result,0);
+            System.out.println();
+            if(ByteUtils.toHexString(result).equals(plain)){
+                assert true;
+            }else{
+                assert false;
+            }
+        }else {
+            assert false;
+        }
+
+    }
+
+    @Test
+    public void testAES192(){
+
+        String s = "000102030405060708090a0b0c0d0e0f1011121314151617";
+        String plain = "00112233445566778899aabbccddeeff";
+        String cipher =  "dda97ca4864cdfe06eaf70a0ec0d7191";
+        Key key = new SecretKeySpec(Hex.decode(s), "AES");
+        AESEngine aesEngine = new AESEngine();
+        KeyParameter keyParameter = new KeyParameter(key.getEncoded());
+        aesEngine.init(true,keyParameter);
+        byte[] out = new byte[16];
+        int len = aesEngine.processBlock(Hex.decode(plain),0,out,0);
+        System.out.println();
+        if(ByteUtils.toHexString(out).equals(cipher)){
+            aesEngine.init(false,keyParameter);
+            byte[] result = new byte[16];
+            int len2 = aesEngine.processBlock(out,0,result,0);
+            System.out.println();
+            if(ByteUtils.toHexString(result).equals(plain)){
+                assert true;
+            }else{
+                assert false;
+            }
+        }else {
+            assert false;
+        }
+
+    }
+
+    @Test
+    public void testSM2Enc(){
+        byte[] m = Strings.toByteArray("encryption standard");
+        KeyPair keyPair;
+        ECKeyParameters ecKeyParameters=null;
+        ECPublicKeyParameters param=null;
+        try {
+            keyPair = Keys.generateSM2KeyPair();
+
+            ECPrivateKey ecPrivateKey = (ECPrivateKey) keyPair.getPrivate();
+            ECCurve curve = new SM2P256V1Curve();
+            BigInteger SM2_ECC_N = new BigInteger(
+                    "FFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFF7203DF6B21C6052B53BBF40939D54123", 16);
+            BigInteger SM2_ECC_GX = new BigInteger(
+                    "32C4AE2C1F1981195F9904466A39C9948FE30BBFF2660BE1715A4589334C74C7", 16);
+            BigInteger SM2_ECC_GY = new BigInteger(
+                    "BC3736A2F4F6779C59BDCEE36B692153D0A9877CC62A474002DF32E52139F0A0", 16);
+            ECPoint G_POINT = curve.createPoint(SM2_ECC_GX, SM2_ECC_GY);
+            ECDomainParameters ecDomainParameters = new ECDomainParameters(curve,G_POINT,SM2_ECC_N  );
+            ecKeyParameters = new ECPrivateKeyParameters(ecPrivateKey.getS(),ecDomainParameters);
+
+
+            BCECPublicKey localECPublicKey = (BCECPublicKey)keyPair.getPublic();
+            ECParameterSpec localECParameterSpec = localECPublicKey.getParameters();
+            ECDomainParameters localECDomainParameters = new ECDomainParameters(localECParameterSpec.getCurve(),
+                    localECParameterSpec.getG(), localECParameterSpec.getN());
+            param = new ECPublicKeyParameters(localECPublicKey.getQ(),localECDomainParameters);
+        } catch (Exception e) {
+            e.printStackTrace();
+            assert false;
+        }
+        SM2Engine sm2Engine = new SM2Engine();
+
+        ParametersWithRandom parametersWithRandom = new ParametersWithRandom(param);
+        sm2Engine.init(true,parametersWithRandom);
+        try {
+            byte[] enc = sm2Engine.processBlock(m, 0, m.length);
+
+            sm2Engine.init(false, ecKeyParameters);
+            byte[] dec = sm2Engine.processBlock(enc, 0, enc.length);
+
+            boolean result = Arrays.areEqual(m, dec);
+            if(result){
+                assert true;
+            }else {
+                assert false;
+            }
+        } catch (InvalidCipherTextException e) {
+            e.printStackTrace();
+            assert false;
+        }
+
+    }
 } 
